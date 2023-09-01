@@ -1,21 +1,15 @@
 {
   "block_array": [
     {
-      "hash": "33a25b8471a4d9bab656b9b0f9689d51c6fd38aea1f9c8456cdff34408509d51",
+      "hash": "bb10509bd471d6fe9c0acf6340edd1a53f6d84973f7924a14e1d63ce097f5515",
       "num": 0,
-      "size": 524288000,
-      "url": "https://cdn.discordapp.com/attachments/1146787754915676260/1146938576559419482/ca9f614e-4aa0-4f48-b840-123b6f3f3ee1.0.block"
-    },
-    {
-      "hash": "214bb8abd4935377c1e8923b785cf3df4c7c34785f058cf7cb671d7c748ddffa",
-      "num": 1,
-      "size": 93484576,
-      "url": "https://cdn.discordapp.com/attachments/1146787754915676260/1146938707908239380/ca9f614e-4aa0-4f48-b840-123b6f3f3ee1.1.block"
+      "size": 512,
+      "url": "https://cdn.discordapp.com/attachments/1146787754915676260/1147147101160087593/ddfea09d-c4da-4a6f-bef0-df1d5c061332.0.block"
     }
   ],
-  "blocks": 2,
+  "blocks": 1,
   "hashed_pass": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
-  "md5": "166659dc4de09fd27ecfc00bdff9fc2d",
-  "name": "waifus.7z",
-  "size": 617772575
+  "md5": "8b21e31c4bd3faaf2ae3b7b6cec5e020",
+  "name": "Cargo.toml",
+  "size": 497
 }

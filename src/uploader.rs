@@ -7,7 +7,7 @@ use sha256::digest;
 use crate::database::save_upload;
 use crate::utils::{Block, calculate_file_md5, empty_trash, encrypt_file, Subscription, to_blocks};
 
-pub fn safe_upload(pass: &str, input_file: &str, token: String, channel_id: u64, sub: Subscription) {
+pub fn safe_upload(pass: &str, input_file: &str, token: String, channel_id: u64, sub: Subscription) -> usize {
     let uuid = uuid::Uuid::new_v4();
     let file_size = std::fs::metadata(input_file).unwrap().len();
 
@@ -47,7 +47,7 @@ pub fn safe_upload(pass: &str, input_file: &str, token: String, channel_id: u64,
     let input_file_name = input_file.split("/").last().unwrap();
 
     println!("Saving upload");
-    save_upload(
+    let saved_id = save_upload(
         input_file_name,
         file_size,
         md5.as_str(),
@@ -57,6 +57,8 @@ pub fn safe_upload(pass: &str, input_file: &str, token: String, channel_id: u64,
     );
 
     println!("All done!");
+
+    saved_id
 }
 
 pub fn upload_blocks(blocks: &mut Vec<Block>, token: String, channel_id: u64) {

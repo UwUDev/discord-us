@@ -5,7 +5,7 @@ use serde_json::{Map, Number, Value};
 use sha256::digest;
 use crate::utils::Block;
 
-pub fn save_upload(file_name: &str, size: u64, md5: &str, hashed_pass: &str, block_count: usize, blocks: &Vec<Block>) {
+pub fn save_upload(file_name: &str, size: u64, md5: &str, hashed_pass: &str, block_count: usize, blocks: &Vec<Block>) -> usize {
     let conn = Connection::open("files.db").unwrap();
     let sql = format!(
         "INSERT INTO files (name, md5, size, blocks, hashed_pass) VALUES ('{}', '{}', {}, {}, '{}')",
@@ -15,6 +15,8 @@ pub fn save_upload(file_name: &str, size: u64, md5: &str, hashed_pass: &str, blo
         sql.as_str(),
         [],
     ).unwrap();
+
+    let saved_id = conn.last_insert_rowid() as usize;
 
     for block in blocks {
         let sql = format!(
@@ -26,6 +28,8 @@ pub fn save_upload(file_name: &str, size: u64, md5: &str, hashed_pass: &str, blo
             [],
         ).unwrap();
     }
+
+    saved_id
 }
 
 pub fn create_db(default_pass: &str) {

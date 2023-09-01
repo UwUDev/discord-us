@@ -12,14 +12,14 @@ use crate::utils::Subscription::{Boost, Free};
 
 fn main() {
     create_trash_dir();
-    //let token = String::from("no.");
-    //let channel_id = 1146787754915676260u64;
+    let token = String::from("no.");
+    let channel_id = 1146787754915676260u64;
 
     //create_db("123456");
-    //safe_upload("123456","cool.zip", token, channel_id, Boost);
     //safe_download(2, "123456", "."); // this is a test file but if you want free pfp's you can use this
-    //export_waterfall(2, "cool.waterfall");
-    import_waterfall("cool.waterfall");
+    let saved_id = safe_upload("123456","Cargo.toml", token, channel_id, Boost);
+    export_waterfall(saved_id, "cool.waterfall");
+    //import_waterfall("cool.waterfall");
     empty_trash();
 }
 
