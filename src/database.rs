@@ -1,4 +1,7 @@
-use rusqlite::Connection;
+use std::fs::File;
+use std::io::{BufReader, Write};
+use rusqlite::{Connection, params};
+use serde_json::{Map, Number, Value};
 use sha256::digest;
 use crate::utils::Block;
 
@@ -159,4 +162,105 @@ pub fn get_hashed_pass(id: usize) -> String {
     }
 
     hashed_pass
+}
+
+fn get_full_file(id: usize) -> (String, String, usize, usize, String) {
+    let conn = Connection::open("files.db").unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT name, md5, size, blocks, hashed_pass FROM files WHERE id = ?1"
+    ).unwrap();
+
+    let mut name = String::new();
+    let mut md5 = String::new();
+    let mut size = 0;
+    let mut block_count = 0;
+    let mut hashed_pass = String::new();
+    let file_iter = stmt.query_map(
+        [id],
+        |row| {
+            Ok((
+                row.get(0).unwrap(),
+                row.get(1).unwrap(),
+                row.get(2).unwrap(),
+                row.get(3).unwrap(),
+                row.get(4).unwrap(),
+            ))
+        },
+    ).unwrap();
+
+    for file in file_iter {
+        let file_ = file.unwrap();
+        name = file_.0;
+        md5 = file_.1;
+        size = file_.2;
+        block_count = file_.3;
+        hashed_pass = file_.4;
+    }
+
+    (name, md5, size, block_count, hashed_pass)
+}
+
+
+pub fn export_waterfall(id: usize, path: &str) {
+    let mut waterfall = Map::new();
+    let file = get_full_file(id);
+    let blocks = get_blocks(id);
+
+    waterfall.insert("name".to_string(), Value::String(file.0));
+    waterfall.insert("md5".to_string(), Value::String(file.1));
+    waterfall.insert("size".to_string(), Value::Number(Number::from(file.2)));
+    waterfall.insert("blocks".to_string(), Value::Number(Number::from(file.3)));
+    waterfall.insert("hashed_pass".to_string(), Value::String(file.4));
+
+    let mut block_array = Vec::new();
+    for block in blocks {
+        let mut block_map = Map::new();
+        block_map.insert("num".to_string(), Value::Number(Number::from(block.num)));
+        block_map.insert("hash".to_string(), Value::String(block.hash));
+        block_map.insert("size".to_string(), Value::Number(Number::from(block.size)));
+        block_map.insert("url".to_string(), Value::String(block.url.unwrap()));
+        block_array.push(Value::Object(block_map));
+    }
+
+    waterfall.insert("block_array".to_string(), Value::Array(block_array));
+
+    let mut file = File::create(path).unwrap();
+    file.write_all(serde_json::to_string_pretty(&waterfall).unwrap().as_bytes()).unwrap();
+
+    println!("Exported waterfall to {}", path);
+}
+
+pub fn import_waterfall(path: &str) {
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let waterfall: Map<String, Value> = serde_json::from_reader(reader).unwrap();
+
+    let name = waterfall.get("name").unwrap().as_str().unwrap();
+    let md5 = waterfall.get("md5").unwrap().as_str().unwrap();
+    let size = waterfall.get("size").unwrap().as_u64().unwrap() as usize;
+    let blocks = waterfall.get("blocks").unwrap().as_u64().unwrap() as usize;
+    let hashed_pass = waterfall.get("hashed_pass").unwrap().as_str().unwrap();
+
+    let conn = Connection::open("files.db").unwrap();
+    conn.execute(
+        "INSERT INTO files (name, md5, size, blocks, hashed_pass) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![name, md5, size, blocks, hashed_pass],
+    ).unwrap();
+
+    let id = conn.last_insert_rowid() as usize;
+
+    let block_array = waterfall.get("block_array").unwrap().as_array().unwrap();
+    for block in block_array {
+        let num = block.get("num").unwrap().as_u64().unwrap() as usize;
+        let hash = block.get("hash").unwrap().as_str().unwrap();
+        let size = block.get("size").unwrap().as_u64().unwrap() as usize;
+        let url = block.get("url").unwrap().as_str().unwrap();
+
+        conn.execute(
+            "INSERT INTO blocks (file_id, block_num, block_hash, block_size, url) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, num, hash, size, url],
+        ).unwrap();
+    }
+
+    println!("Imported waterfall from {}", path);
 }
