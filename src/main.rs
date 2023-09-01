@@ -6,8 +6,7 @@ mod downloader;
 use crate::database::{create_db, export_waterfall, import_waterfall};
 use crate::downloader::safe_download;
 use crate::uploader::safe_upload;
-use crate::utils::{create_trash_dir, empty_trash};
-use crate::utils::Subscription::{Boost, Free};
+use crate::utils::{create_trash_dir, empty_trash, Subscription};
 
 
 fn main() {
@@ -17,7 +16,7 @@ fn main() {
 
     //create_db("123456");
     //safe_download(2, "123456", "."); // this is a test file but if you want free pfp's you can use this
-    let saved_id = safe_upload("123456","Cargo.toml", token, channel_id, Boost);
+    let saved_id = safe_upload("123456","Cargo.toml", token, channel_id, Subscription::Boost);
     export_waterfall(saved_id, "cool.waterfall");
     //import_waterfall("cool.waterfall");
     empty_trash();

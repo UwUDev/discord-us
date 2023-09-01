@@ -33,10 +33,6 @@ pub fn safe_upload(pass: &str, input_file: &str, token: String, channel_id: u64,
     );
     println!("Uploaded blocks");
 
-    for block in &blocks {
-        println!("url: {}", block.url.clone().unwrap());
-    }
-
 
     empty_trash();
 
