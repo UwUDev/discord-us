@@ -307,6 +307,7 @@ dependencies = [
  "rand",
  "reqwest",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2 0.9.9",
  "sha256",

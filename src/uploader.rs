@@ -18,12 +18,19 @@ use crate::database::save_upload;
 use crate::utils::{Block, calculate_file_md5, empty_trash, encrypt_file, Subscription, to_blocks};
 use threadpool::ThreadPool;
 use rand::{RngCore, thread_rng};
+use serde::Serialize;
+use crate::common::{Container, Waterfall};
 use crate::http_client::{create_client, prepare_discord_request};
 
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 
 pub trait Uploader {
-    fn upload(&mut self, encryption_password: String, token: String, channel_id: u64);
+    fn upload(&mut self, encryption_password: String, token: String, channel_id: u64) -> &Self;
+}
+
+pub trait WaterfallExporter {
+    fn export_waterfall(&self) -> Waterfall;
+    fn export_waterfall_with_password(&self, password: String) -> Waterfall;
 }
 
 const CHUNK_SIZE: u32 = 1 << 16;
@@ -38,6 +45,7 @@ pub struct FileUploader {
     container_size: u32,
 
     current_container_index: Arc<Mutex<u32>>,
+    containers: Arc<Mutex<Vec<Container>>>,
 }
 
 impl FileUploader {
@@ -54,6 +62,7 @@ impl FileUploader {
             container_size,
             threads_count,
             current_container_index: Arc::new(Mutex::new(0)),
+            containers: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -73,7 +82,7 @@ impl FileUploader {
 }
 
 impl Uploader for FileUploader {
-    fn upload(&mut self, encryption_password: String, token: String, channel_id: u64) {
+    fn upload(&mut self, encryption_password: String, token: String, channel_id: u64) -> &Self {
         let thread_count = self.threads_count.clone();
 
         let container_count = self.container_count();
@@ -93,6 +102,7 @@ impl Uploader for FileUploader {
                 channel_id,
                 encryption_password.clone(),
                 self.file_size,
+                self.containers.clone(),
             );
 
             pool.execute(move || {
@@ -101,6 +111,26 @@ impl Uploader for FileUploader {
         }
 
         pool.join();
+
+        self
+    }
+}
+
+impl WaterfallExporter for FileUploader {
+    fn export_waterfall(&self) -> Waterfall {
+        self.export_waterfall_with_password(String::new())
+    }
+
+
+    fn export_waterfall_with_password(&self, password: String) -> Waterfall {
+        let containers = self.containers.lock().unwrap().clone();
+
+        Waterfall {
+            containers,
+            size: self.file_size,
+            filename: self.file_path.clone(),
+            password: password.clone(),
+        }
     }
 }
 
@@ -116,12 +146,23 @@ struct FileThreadedUploader {
     encryption_password: String,
 
     client: Client,
+
+    containers: Arc<Mutex<Vec<Container>>>,
 }
 
 unsafe impl Send for FileThreadedUploader {}
 
 impl FileThreadedUploader {
-    fn new(container_count: u32, current_container_index: Arc<Mutex<u32>>, file_path: String, container_size: u32, token: String, channel_id: u64, encryption_password: String, file_size: u64) -> FileThreadedUploader {
+    fn new(container_count: u32,
+           current_container_index: Arc<Mutex<u32>>,
+           file_path: String,
+           container_size: u32,
+           token: String,
+           channel_id: u64,
+           encryption_password: String,
+           file_size: u64,
+           containers: Arc<Mutex<Vec<Container>>>,
+    ) -> FileThreadedUploader {
         FileThreadedUploader {
             container_count,
             container_size,
@@ -132,6 +173,7 @@ impl FileThreadedUploader {
             encryption_password,
             file_size,
             client: create_client(),
+            containers,
         }
     }
 
@@ -142,15 +184,17 @@ impl FileThreadedUploader {
             //self.upload_container(container_index);
             println!("Uploading Container {:?}", container_index);
 
-            self.upload(container_index as u32);
-
+            let container = self.upload(container_index as u32);
+            {
+                self.containers.lock().unwrap().push(container.clone());
+            }
             container_index = self.get_processing_container_index();
         }
 
         return;
     }
 
-    fn upload(&mut self, container_index: u32) {
+    fn upload(&mut self, container_index: u32) -> Container {
         let filename = "data.enc".to_string();
 
         let mut salt = [0u8; 16];
@@ -194,7 +238,15 @@ impl FileThreadedUploader {
             .header("user-agent", "Discord-Android/192013;RNA")
             .body(body).send().unwrap();
 
-        self.post_message(filename.clone(), upload_filename);
+        let storage_url = self.post_message(filename.clone(), upload_filename);
+
+        return Container {
+            storage_url,
+            chunk_count: remaining_size / CHUNK_SIZE as u64,
+            chunk_size: CHUNK_SIZE as u64,
+            salt,
+            bytes_range: [cursor as u64, (cursor as u64) + remaining_size - (self.chunks_per_container() as u64 * METADATA_SIZE as u64)],
+        };
     }
 
     fn get_processing_container_index(&mut self) -> i32 {
@@ -243,7 +295,7 @@ impl FileThreadedUploader {
         return (upload_url.to_string(), upload_filename.to_string());
     }
 
-    fn post_message (&self, filename: String, upload_filename: String) -> String {
+    fn post_message(&self, filename: String, upload_filename: String) -> String {
         println!("Sending message with filename {:?} and upload_filename {:?}", filename, upload_filename);
 
         let url = format!("https://discord.com/api/v9/channels/{}/messages", self.channel_id);
@@ -265,7 +317,7 @@ impl FileThreadedUploader {
 
         let req = self.client.post(url);
 
-        let resp  = prepare_discord_request(req, self.token.clone()).json(&payload)
+        let resp = prepare_discord_request(req, self.token.clone()).json(&payload)
             .send().unwrap().json::<serde_json::Value>().unwrap();
 
         let file_url = resp["attachments"][0]["url"].as_str().unwrap();
@@ -374,160 +426,5 @@ impl Read for CustomBody {
         }
 
         Ok(read)
-    }
-}
-
-
-pub fn safe_upload(pass: &str, input_file: &str, token: String, channel_id: u64, sub: Subscription) -> usize {
-    let uuid = uuid::Uuid::new_v4();
-    let file_size = std::fs::metadata(input_file).unwrap().len();
-
-    println!("Calculating MD5");
-    let md5 = calculate_file_md5(input_file).unwrap();
-    println!("md5: {}", md5);
-
-    let enc_file_path = format!("trash/{}.enc", uuid);
-
-    println!("Encrypting file");
-    encrypt_file(input_file, enc_file_path.clone().as_str(), pass);
-    println!("Encrypted file");
-
-    println!("Splitting file into blocks");
-    let mut blocks = to_blocks(enc_file_path.clone().as_str(), sub);
-    println!("Split file into blocks");
-
-    println!("Uploading blocks");
-    upload_blocks(
-        &mut blocks,
-        token,
-        channel_id,
-    );
-    println!("Uploaded blocks");
-
-
-    empty_trash();
-
-    let hashed_pass = digest(pass.as_bytes());
-
-    let block_count = blocks.len();
-
-    let input_file_name = input_file.split("/").last().unwrap();
-
-    println!("Saving upload");
-    let saved_id = save_upload(
-        input_file_name,
-        file_size,
-        md5.as_str(),
-        hashed_pass.as_str(),
-        block_count,
-        &blocks,
-    );
-
-    println!("All done!");
-
-    saved_id
-}
-
-pub fn upload_blocks(blocks: &mut Vec<Block>, token: String, channel_id: u64) {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(60 * 60))
-        .brotli(true)
-        .gzip(true)
-        .build()
-        .unwrap();
-
-    let mut blk_num = 0;
-    let mut block_count = blocks.len();
-    for block in blocks.iter_mut() {
-        blk_num += 1;
-
-        print!("Uploading block {}/{} ({} bytes) [{}]", blk_num, block_count, block.size, block.hash);
-        std::io::stdout().flush().unwrap();
-
-        let url = format!("https://discord.com/api/v9/channels/{}/attachments", channel_id);
-
-        let path = block.path.clone();
-        let filename = path.split("/").last().unwrap();
-        let payload = json!(
-            {
-                "files": [
-                    {
-                        "filename": filename,
-                        "file_size": block.size,
-                        "id": "8"
-                    }
-                ]
-            }
-        );
-
-
-        let resp = client.post(url)
-            .header("Authorization", token.clone())
-            .header("Content-Type", "application/json")
-            .header("X-Super-Properties", "eyJvcyI6IkFuZHJvaWQiLCJicm93c2VyIjoiRGlzY29yZCBBbmRyb2lkIiwiZGV2aWNlIjoiYmx1ZWpheSIsInN5c3RlbV9sb2NhbGUiOiJmci1GUiIsImNsaWVudF92ZXJzaW9uIjoiMTkyLjEzIC0gcm4iLCJyZWxlYXNlX2NoYW5uZWwiOiJnb29nbGVSZWxlYXNlIiwiZGV2aWNlX3ZlbmRvcl9pZCI6IjhkZGU4M2IzLTUzOGEtNDJkMi04MzExLTM1YmFlY2M2YmJiOCIsImJyb3dzZXJfdXNlcl9hZ2VudCI6IiIsImJyb3dzZXJfdmVyc2lvbiI6IiIsIm9zX3ZlcnNpb24iOiIzMyIsImNsaWVudF9idWlsZF9udW1iZXIiOjE5MjAxMzAwMTEzNzczLCJjbGllbnRfZXZlbnRfc291cmNlIjpudWxsLCJkZXNpZ25faWQiOjB9")
-            .header("Accept-Language", "fr-FR")
-            .header("X-Discord-Locale", "fr")
-            .header("X-Discord-Timezone", "Europe/Paris")
-            .header("X-Debug-Options", "bugReporterEnabled")
-            .header("User-Agent", "Discord-Android/192013;RNA")
-            .header("Host", "discord.com")
-            .header("Connection", "Keep-Alive")
-            .header("Accept-Encoding", "gzip")
-            .json(&payload)
-            .send().unwrap().json::<serde_json::Value>().unwrap();
-
-        let upload_url = resp["attachments"][0]["upload_url"].as_str().unwrap();
-        let upload_filename = resp["attachments"][0]["upload_filename"].as_str().unwrap();
-
-        let file = File::open(&block.path).unwrap();
-
-        client.put(upload_url)
-            .header("accept-encoding", "gzip")
-            .header("connection", "Keep-Alive")
-            .header("content-length", block.size)
-            .header("content-type", "application/x-x509-ca-cert")
-            .header("host", "discord-attachments-uploads-prd.storage.googleapis.com")
-            .header("user-agent", "Discord-Android/192013;RNA")
-            .body(file)
-            .send().unwrap();
-
-
-        let url = format!("https://discord.com/api/v9/channels/{}/messages", channel_id);
-
-        let payload = json!(
-            {
-                "content": "",
-                "channel_id": channel_id,
-                "type": 0,
-                "attachments": [
-                    {
-                        "id": "0",
-                        "filename": filename,
-                        "uploaded_filename": upload_filename
-                    }
-                ]
-            }
-        );
-
-        let resp = client.post(url)
-            .header("Authorization", token.clone())
-            .header("X-Super-Properties", "eyJvcyI6IkFuZHJvaWQiLCJicm93c2VyIjoiRGlzY29yZCBBbmRyb2lkIiwiZGV2aWNlIjoiYmx1ZWpheSIsInN5c3RlbV9sb2NhbGUiOiJmci1GUiIsImNsaWVudF92ZXJzaW9uIjoiMTkyLjEzIC0gcm4iLCJyZWxlYXNlX2NoYW5uZWwiOiJnb29nbGVSZWxlYXNlIiwiZGV2aWNlX3ZlbmRvcl9pZCI6IjhkZGU4M2IzLTUzOGEtNDJkMi04MzExLTM1YmFlY2M2YmJiOCIsImJyb3dzZXJfdXNlcl9hZ2VudCI6IiIsImJyb3dzZXJfdmVyc2lvbiI6IiIsIm9zX3ZlcnNpb24iOiIzMyIsImNsaWVudF9idWlsZF9udW1iZXIiOjE5MjAxMzAwMTEzNzczLCJjbGllbnRfZXZlbnRfc291cmNlIjpudWxsLCJkZXNpZ25faWQiOjB9")
-            .header("Accept-Language", "fr-FR")
-            .header("X-Discord-Locale", "fr")
-            .header("X-Discord-Timezone", "Europe/Paris")
-            .header("X-Debug-Options", "bugReporterEnabled")
-            .header("User-Agent", "Discord-Android/192013;RNA")
-            .header("Content-Type", "application/json")
-            .header("Host", "discord.com")
-            .header("Connection", "Keep-Alive")
-            .header("Accept-Encoding", "gzip")
-            .json(&payload)
-            .send().unwrap().json::<serde_json::Value>().unwrap();
-
-        let file_url = resp["attachments"][0]["url"].as_str().unwrap();
-
-        block.url = Some(file_url.to_string());
-
-        print!("\rUploaded block {}/{} ({} bytes) [{}]", blk_num, block_count, block.size, block.hash);
     }
 }
