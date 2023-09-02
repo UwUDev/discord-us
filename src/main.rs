@@ -2,23 +2,18 @@ mod utils;
 mod uploader;
 mod database;
 mod downloader;
+mod http_client;
 
-use crate::database::{create_db, export_waterfall, import_waterfall};
-use crate::downloader::safe_download;
-use crate::uploader::safe_upload;
-use crate::utils::{create_trash_dir, empty_trash, Subscription};
+use uploader::{FileUploader, Uploader};
+use crate::utils::{create_trash_dir};
 
 
 fn main() {
     create_trash_dir();
-    let token = String::from("no.");
-    let channel_id = 1146787754915676260u64;
+    let token = String::from("...");
+    let channel_id: u64 = 0;
 
-    //create_db("123456");
-    //safe_download(2, "123456", "."); // this is a test file but if you want free pfp's you can use this
-    let saved_id = safe_upload("123456","Cargo.toml", token, channel_id, Subscription::Boost);
-    export_waterfall(saved_id, "cool.waterfall");
-    //import_waterfall("cool.waterfall");
-    empty_trash();
+    FileUploader::new_with_threads_count("fichier".to_string(), 24 * 1024 * 1024, 1)
+        .upload("password".to_string(), token, channel_id);
 }
 

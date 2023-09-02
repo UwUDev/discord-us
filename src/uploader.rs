@@ -1,6 +1,8 @@
-use std::cmp::min;
+use std::cmp::{max, min};
+use std::marker::Send;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use aes::{Aes256, NewBlockCipher};
@@ -24,7 +26,7 @@ pub trait Uploader {
     fn upload(&mut self, encryption_password: String, token: String, channel_id: u64);
 }
 
-const CHUNK_SIZE: u32 = 1 << 23;
+const CHUNK_SIZE: u32 = 1 << 16;
 
 const METADATA_SIZE: usize = 64;
 
@@ -116,6 +118,7 @@ struct FileThreadedUploader {
     client: Client,
 }
 
+unsafe impl Send for FileThreadedUploader {}
 
 impl FileThreadedUploader {
     fn new(container_count: u32, current_container_index: Arc<Mutex<u32>>, file_path: String, container_size: u32, token: String, channel_id: u64, encryption_password: String, file_size: u64) -> FileThreadedUploader {
@@ -148,40 +151,50 @@ impl FileThreadedUploader {
     }
 
     fn upload(&mut self, container_index: u32) {
+        let filename = "data.enc".to_string();
+
         let mut salt = [0u8; 16];
+
+        println!("Doing upload of index {:?}", container_index);
 
         thread_rng().fill_bytes(&mut salt);
 
         let mut key = [0u8; 32];
         pbkdf2::<Hmac<Sha256>>(self.encryption_password.as_bytes(), &salt, 10000, &mut key);
 
-        let mut file = File::open(self.file_path.clone()).unwrap();
 
-        file.seek(SeekFrom::Current(
-            (container_index * self.container_size) as i64
-                - ((METADATA_SIZE as i64) * ((container_index as i64) - 1) * (self.chunks_per_container() as i64))
-        )).unwrap();
+        println!("Computing cursor chunks_per_container: {:?}", self.chunks_per_container());
 
-        let mut remaining_size = min(self.container_size as u64, (self.file_size - (container_index * self.container_size) as u64));
+        let cursor = (((container_index - 1) * self.container_size) as i64) - ((METADATA_SIZE as i64) * (max(0, (container_index as i64) - 2)) * (self.chunks_per_container() as i64));
+
+        let mut remaining_size = min(self.container_size as u64, (self.file_size - ((container_index - 1) * self.container_size) as u64));
+
+        if remaining_size % (CHUNK_SIZE as u64) > 0 {
+            remaining_size += ((CHUNK_SIZE as u64) - remaining_size % (CHUNK_SIZE as u64));
+        }
+
+        println!("Remaining size: {:?}", remaining_size);
+
+        println!("Requesting attachment");
+        let (upload_url, upload_filename) = self.request_attachment(filename.clone(), remaining_size);
+
+        println!("Got upload url: {:?}", upload_url);
+
+        let file_uploader = CustomBody::new(key, remaining_size as i64, self.file_path.clone(), cursor);
+
+        let body = Body::sized(file_uploader, remaining_size as u64);
 
 
-        let (upload_url, upload_filename) = self.request_attachment(remaining_size);
+        self.client.put(upload_url)
+            .header("accept-encoding", "gzip")
+            .header("connection", "Keep-Alive")
+            .header("content-length", remaining_size)
+            .header("content-type", "application/x-x509-ca-cert")
+            .header("host", "discord-attachments-uploads-prd.storage.googleapis.com")
+            .header("user-agent", "Discord-Android/192013;RNA")
+            .body(body).send().unwrap();
 
-        let body = Body::new();
-
-        // self.client.put(upload_url)
-        //     .header("accept-encoding", "gzip")
-        //     .header("connection", "Keep-Alive")
-        //     .header("content-length", remaining_size)
-        //     .header("content-type", "application/x-x509-ca-cert")
-        //     .header("host", "discord-attachments-uploads-prd.storage.googleapis.com")
-        //     .header("user-agent", "Discord-Android/192013;RNA")
-        //     .body(file);
-
-
-        let mut bytes_processed = 0;
-
-        while bytes_processed < self.container_size {}
+        self.post_message(filename.clone(), upload_filename);
     }
 
     fn get_processing_container_index(&mut self) -> i32 {
@@ -200,14 +213,16 @@ impl FileThreadedUploader {
         self.container_size / CHUNK_SIZE
     }
 
-    fn request_attachment(&self, size: u64) -> (String, String) {
+    fn request_attachment(&self, filename: String, size: u64) -> (String, String) {
+        println!("Requesting attachment of size {:?}", size);
+
         let url = format!("https://discord.com/api/v9/channels/{}/attachments", self.channel_id);
 
         let payload = json!(
             {
                 "files": [
                     {
-                        "filename": "data.enc",
+                        "filename": filename,
                         "file_size": size,
                         "id": "8"
                     }
@@ -227,79 +242,135 @@ impl FileThreadedUploader {
 
         return (upload_url.to_string(), upload_filename.to_string());
     }
+
+    fn post_message (&self, filename: String, upload_filename: String) -> String {
+        println!("Sending message with filename {:?} and upload_filename {:?}", filename, upload_filename);
+
+        let url = format!("https://discord.com/api/v9/channels/{}/messages", self.channel_id);
+
+        let payload = json!(
+            {
+                "content": "",
+                "channel_id": self.channel_id,
+                "type": 0,
+                "attachments": [
+                    {
+                        "id": "0",
+                        "filename": filename,
+                        "uploaded_filename": upload_filename
+                    }
+                ]
+            }
+        );
+
+        let req = self.client.post(url);
+
+        let resp  = prepare_discord_request(req, self.token.clone()).json(&payload)
+            .send().unwrap().json::<serde_json::Value>().unwrap();
+
+        let file_url = resp["attachments"][0]["url"].as_str().unwrap();
+
+        println!("Message has file url: {:?}", file_url);
+
+        file_url.to_string()
+    }
 }
 
 
-struct CustomBody<'a> {
-    salt: [u8; 16],
+struct CustomBody {
     key: [u8; 32],
 
-    remaining_size: u64,
-    file: &'a mut File,
-
-    current_salt: [u8; 32],
+    remaining_size: i64,
+    file: File,
     buffer_cursor: usize,
-    buffer: [u8; CHUNK_SIZE as usize],
+    buffer: Vec<u8>,
 }
 
-impl CustomBody<'_> {
-    fn do_one_chunk(&mut self) {
-        let content_size = (CHUNK_SIZE as usize) - METADATA_SIZE;
+unsafe impl Send for CustomBody {}
 
-        let bytes_read = self.file.read(&mut self.buffer[..content_size]).unwrap();
+impl CustomBody {
+    fn do_one_chunk(&mut self) {
+        println!("Reading chunk (remaining to process: {:?})", self.remaining_size);
+
+        let mut salt = [0u8; 16];
+        thread_rng().fill_bytes(&mut salt);
+
+        let content_size = min(self.remaining_size as usize, (CHUNK_SIZE as usize) - METADATA_SIZE);
+
+        println!("Buffer size: {:?}, Content size {:?}", self.buffer.len(), content_size);
+
+        let bytes_read = self.file.read(&mut self.buffer[0..content_size]).unwrap();
+
+        println!("Read {:?} bytes from file", bytes_read);
 
         // compute hash
         let mut hasher = Sha256::new();
-        hasher.update(&self.buffer[..content_size]);
+        hasher.update(&self.buffer[0..content_size]);
         let hash = hasher.finalize();
 
+        println!("Chunk hash: {:?}", hash);
 
         // encrypt data
         let cipher = Aes256Cbc::new_from_slices(
             &self.key.clone(),
-            &self.current_salt.clone(),
+            &salt.clone(),
         ).unwrap();
 
-        let mut encrypted = cipher.encrypt(&mut self.buffer[..content_size], content_size).unwrap();
+        println!("Encryption key: {:?}", self.key.clone());
+        println!("Encryption salt: {:?}", salt.clone());
+
+        println!("Encrypting chunk from 0 to {:?}", content_size + 16);
+
+        cipher.encrypt(&mut self.buffer[0..(content_size + 16)], content_size)
+            .expect("encryption failure!");
+
+        println!("Setting salt at {:?} -> {:?}", (CHUNK_SIZE as usize) - 48, ((CHUNK_SIZE as usize) - 32));
 
         // add at end the iv
-        encrypted[..content_size].clone_from_slice(&self.current_salt.clone());
+        self.buffer[(CHUNK_SIZE as usize) - 48..((CHUNK_SIZE as usize) - 32)].clone_from_slice(&salt.clone());
 
-        encrypted[..(content_size + self.current_salt.len())].clone_from_slice(&self.current_salt.clone());
+        self.buffer[(CHUNK_SIZE as usize) - 32..].clone_from_slice(&hash.clone());
 
-        self.remaining_size -= CHUNK_SIZE as u64;
+        self.remaining_size -= CHUNK_SIZE as i64;
     }
 
-    pub fn new(salt: [u8; 16], key: [u8; 32], remaining_size: u64, file: &mut File, current_salt: [u8; 32]) -> Self {
-        Self { salt, key, remaining_size, file, current_salt, buffer: [0u8; CHUNK_SIZE as usize], buffer_cursor: 0 }
+    pub fn new(key: [u8; 32], remaining_size: i64, file_path: String, cursor: i64) -> CustomBody {
+        let mut file = File::open(file_path.clone()).unwrap();
+        println!("Seeking to {:?}", cursor);
+
+        file.seek(SeekFrom::Current(cursor)).unwrap();
+
+        CustomBody { key, remaining_size, file, buffer: vec![0; CHUNK_SIZE as usize], buffer_cursor: CHUNK_SIZE as usize }
     }
 }
 
-impl Read for CustomBody<'_> {
+impl Read for CustomBody {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut read = 0;
 
-        while read < buf.len() {
-            if self.remaining_size <= 0 {
-                return Ok(read);
-            }
+        println!("Doing read of {:?}", buf.len());
 
+        while read < buf.len() {
+            println!("Read loop: buffer_cursor {:?} (read {:?})", self.buffer_cursor, read);
 
             if self.buffer_cursor < CHUNK_SIZE as usize {
-
-            } else {
-                self.do_one_chunk();
-                self.buffer_cursor = 0;
+                let remain = min(buf.len() - read, CHUNK_SIZE as usize - self.buffer_cursor);
+                buf[read..(read + remain)].clone_from_slice(&self.buffer[self.buffer_cursor..(self.buffer_cursor + remain)]);
+                println!("Read loop: pushing {:?} buf", remain);
+                read += remain;
+                self.buffer_cursor += remain;
             }
 
-            let remaining = buf.len() - read;
-
-            let to_read = min(remaining, CHUNK_SIZE as usize);
-
-            buf[read..(read + to_read)].clone_from_slice(&self.buffer[..to_read]);
-
-            read += to_read;
-            self.buffer_cursor += to_read;
+            if self.buffer_cursor >= CHUNK_SIZE as usize {
+                if self.remaining_size <= 0 {
+                    println!("End ! with read = {:?}", read);
+                    return Ok(read);
+                } else {
+                    println!("Read loop: doing_one_chunk");
+                    self.do_one_chunk();
+                    self.buffer_cursor = 0;
+                }
+            }
         }
 
         Ok(read)
