@@ -1,7 +1,5 @@
-use std::cmp::{max, min};
-use std::error::Error;
+use std::cmp::min;
 use std::io::Read;
-use std::sync::{Arc, Mutex};
 use aes::Aes256;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Cbc};
@@ -208,7 +206,7 @@ pub fn safe_download(file_id: usize, pass: &str, output_dir: &str) {
 }
 
 fn download_blocks(blocks: &mut Vec<Block>) {
-    let client = reqwest::blocking::Client::builder()
+    let client = Client::builder()
         .brotli(true)
         .gzip(true)
         .build()
