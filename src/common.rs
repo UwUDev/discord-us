@@ -1,7 +1,10 @@
 use std::fs::File;
 use std::io::Write;
 use serde::{Deserialize, Serialize};
-use crate::downloader::{FileDownloader, WaterfallDownloader};
+
+pub trait FileWritable {
+    fn write_to_file(&self, file_path: String);
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Waterfall {
@@ -12,26 +15,18 @@ pub struct Waterfall {
     pub containers: Vec<Container>,
 }
 
+impl FileWritable for Waterfall {
+    fn write_to_file(&self, file_path: String) {
+        let mut file = File::create(file_path).unwrap();
+        file.write_all(serde_json::to_string_pretty(&self).unwrap().as_bytes()).unwrap();
+    }
+}
+
 impl Waterfall {
-    pub fn download(&self, password: String) {
-        let mut file = File::create(self.filename.clone()).unwrap();
-
-        for container in self.containers.clone() {
-            let mut downloader = FileDownloader::from_waterfall(self.clone());
-            downloader.set_password(password.clone());
-
-            let chunk_count = container.chunk_count;
-
-            let download_container = downloader.get_container_downloader(container);
-            let chunks: Vec<Vec<u8>> = download_container.get_chunks(0, chunk_count as usize).unwrap();
-
-            for chunk in chunks {
-                file.write_all(&chunk).unwrap();
-            }
-            file.flush().unwrap();
-        }
-
-        file.flush().unwrap();
+    pub fn from_file(file_path: String) -> Self {
+        serde_json::from_str::<Waterfall>(
+            &std::fs::read_to_string(file_path).unwrap()
+        ).unwrap()
     }
 }
 

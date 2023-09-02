@@ -6,10 +6,10 @@ mod http_client;
 mod common;
 
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use uploader::{FileUploader, Uploader};
-use crate::common::Waterfall;
-use crate::downloader::{FileDownloader, WaterfallDownloader};
+use crate::common::{FileWritable, Waterfall};
+use crate::downloader::{Downloader, FileDownloader, WaterfallDownloader};
 use crate::uploader::WaterfallExporter;
 use crate::utils::{create_trash_dir};
 
@@ -21,21 +21,14 @@ fn main() {
 
     let password = "password".to_string();
 
-    let waterfall = serde_json::from_str::<Waterfall>(
-        &std::fs::read_to_string("cool.waterfall").unwrap()
-    ).unwrap();
-
-    waterfall.download(password.clone());
-
-    //println!("Chunks count: {:?}", chunks);
-
-    // let waterfall = FileUploader::new_with_threads_count("cargo.toml".to_string(), 24 * 1024 * 1024, 1)
-    //     .upload(password.clone(), token, channel_id)
-    //     .export_waterfall_with_password(password.clone());
+    // let downloader = FileDownloader::from_waterfall(Waterfall::from_file("inoxtag.waterfall".to_string()));
     //
-    // println!("{:?}", serde_json::to_string(&waterfall).unwrap());
-    //
-    // let mut file = File::create("cool.waterfall").unwrap();
-    // file.write_all(serde_json::to_string_pretty(&waterfall).unwrap().as_bytes()).unwrap();
+    // downloader.download_file("inoxtag.mov".to_string());
+
+    let waterfall = FileUploader::new_with_threads_count("trash/IMG_0577.mov".to_string(), 24 * 1024 * 1024, 1)
+        .upload(password.clone(), token, channel_id)
+        .export_waterfall_with_password(password.clone());
+
+    waterfall.write_to_file("inoxtag.waterfall".to_string());
 }
 

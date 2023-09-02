@@ -75,7 +75,7 @@ impl FileUploader {
 
         let chunks_per_container = self.chunks_per_container();
 
-        println!("?: {:?}, {:?}", chunk_count, chunks_per_container);
+        //println!("?: {:?}, {:?}", chunk_count, chunks_per_container);
 
         (chunk_count as f64 / chunks_per_container as f64).ceil() as u32
     }
@@ -207,22 +207,26 @@ impl FileThreadedUploader {
         pbkdf2::<Hmac<Sha256>>(self.encryption_password.as_bytes(), &salt, 10000, &mut key);
 
 
-        println!("Computing cursor chunks_per_container: {:?}", self.chunks_per_container());
+        //println!("Computing cursor chunks_per_container: {:?}", self.chunks_per_container());
 
-        let cursor = (((container_index - 1) * self.container_size) as i64) - ((METADATA_SIZE as i64) * (max(0, (container_index as i64) - 2)) * (self.chunks_per_container() as i64));
+        //let cursor = (((container_index - 1) * self.container_size) as i64) - ((METADATA_SIZE as i64) * (max(0, (container_index as i64) - 2)) * (self.chunks_per_container() as i64));
+        let cursor = (container_index as i64 - 1) * self.chunks_per_container() as i64 * (CHUNK_SIZE as i64 - METADATA_SIZE as i64);
 
-        let mut remaining_size = min(self.container_size as u64, (self.file_size - ((container_index - 1) * self.container_size) as u64));
+        let remaining_real_size = self.file_size - cursor as u64;
+        let remaining_extra_padding = ((remaining_real_size / (CHUNK_SIZE as u64 - METADATA_SIZE as u64)) + 1) * METADATA_SIZE as u64;
+        //println!("Remaining real size: {:?} (extra padding {:?}", remaining_real_size, remaining_extra_padding);
+        let mut remaining_size = min(self.container_size as u64, (remaining_real_size + remaining_extra_padding));
 
         if remaining_size % (CHUNK_SIZE as u64) > 0 {
             remaining_size += ((CHUNK_SIZE as u64) - remaining_size % (CHUNK_SIZE as u64));
         }
 
-        println!("Remaining size: {:?}", remaining_size);
+        //println!("Remaining size: {:?}", remaining_size);
 
-        println!("Requesting attachment");
+        //println!("Requesting attachment");
         let (upload_url, upload_filename) = self.request_attachment(filename.clone(), remaining_size);
 
-        println!("Got upload url: {:?}", upload_url);
+        //println!("Got upload url: {:?}", upload_url);
 
         let file_uploader = CustomBody::new(key, remaining_size as i64, self.file_path.clone(), cursor);
 
@@ -245,7 +249,7 @@ impl FileThreadedUploader {
             chunk_count: remaining_size / CHUNK_SIZE as u64,
             chunk_size: CHUNK_SIZE as u64,
             salt,
-            bytes_range: [cursor as u64, (cursor as u64) + remaining_size - (self.chunks_per_container() as u64 * METADATA_SIZE as u64)],
+            bytes_range: [cursor as u64, min(self.file_size, (cursor as u64) + remaining_size - (self.chunks_per_container() as u64 * METADATA_SIZE as u64))],
         };
     }
 
@@ -342,25 +346,25 @@ unsafe impl Send for CustomBody {}
 
 impl CustomBody {
     fn do_one_chunk(&mut self) {
-        println!("Reading chunk (remaining to process: {:?})", self.remaining_size);
+        //  println!("Reading chunk (remaining to process: {:?})", self.remaining_size);
 
         let mut salt = [0u8; 16];
         thread_rng().fill_bytes(&mut salt);
 
         let content_size = min(self.remaining_size as usize, (CHUNK_SIZE as usize) - METADATA_SIZE);
 
-        println!("Buffer size: {:?}, Content size {:?}", self.buffer.len(), content_size);
+        //  println!("Buffer size: {:?}, Content size {:?}", self.buffer.len(), content_size);
 
         let bytes_read = self.file.read(&mut self.buffer[0..content_size]).unwrap();
 
-        println!("Read {:?} bytes from file", bytes_read);
+        // println!("Read {:?} bytes from file", bytes_read);
 
         // compute hash
         let mut hasher = Sha256::new();
         hasher.update(&self.buffer[0..content_size]);
         let hash = hasher.finalize();
 
-        println!("Chunk hash: {:?}", hash);
+        //println!("Chunk hash: {:?}", hash);
 
         // encrypt data
         let cipher = Aes256Cbc::new_from_slices(
@@ -368,15 +372,15 @@ impl CustomBody {
             &salt.clone(),
         ).unwrap();
 
-        println!("Encryption key: {:?}", self.key.clone());
-        println!("Encryption salt: {:?}", salt.clone());
+        // println!("Encryption key: {:?}", self.key.clone());
+        // println!("Encryption salt: {:?}", salt.clone());
 
-        println!("Encrypting chunk from 0 to {:?}", content_size + 16);
+        // println!("Encrypting chunk from 0 to {:?}", content_size + 16);
 
         cipher.encrypt(&mut self.buffer[0..(content_size + 16)], content_size)
             .expect("encryption failure!");
 
-        println!("Setting salt at {:?} -> {:?}", (CHUNK_SIZE as usize) - 48, ((CHUNK_SIZE as usize) - 32));
+        // println!("Setting salt at {:?} -> {:?}", (CHUNK_SIZE as usize) - 48, ((CHUNK_SIZE as usize) - 32));
 
         // add at end the iv
         self.buffer[(CHUNK_SIZE as usize) - 48..((CHUNK_SIZE as usize) - 32)].clone_from_slice(&salt.clone());
@@ -388,7 +392,7 @@ impl CustomBody {
 
     pub fn new(key: [u8; 32], remaining_size: i64, file_path: String, cursor: i64) -> CustomBody {
         let mut file = File::open(file_path.clone()).unwrap();
-        println!("Seeking to {:?}", cursor);
+        //println!("Seeking to {:?}", cursor);
 
         file.seek(SeekFrom::Current(cursor)).unwrap();
 
@@ -400,25 +404,25 @@ impl Read for CustomBody {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut read = 0;
 
-        println!("Doing read of {:?}", buf.len());
+        //println!("Doing read of {:?}", buf.len());
 
         while read < buf.len() {
-            println!("Read loop: buffer_cursor {:?} (read {:?})", self.buffer_cursor, read);
+            // println!("Read loop: buffer_cursor {:?} (read {:?})", self.buffer_cursor, read);
 
             if self.buffer_cursor < CHUNK_SIZE as usize {
                 let remain = min(buf.len() - read, CHUNK_SIZE as usize - self.buffer_cursor);
                 buf[read..(read + remain)].clone_from_slice(&self.buffer[self.buffer_cursor..(self.buffer_cursor + remain)]);
-                println!("Read loop: pushing {:?} buf", remain);
+                // println!("Read loop: pushing {:?} buf", remain);
                 read += remain;
                 self.buffer_cursor += remain;
             }
 
             if self.buffer_cursor >= CHUNK_SIZE as usize {
                 if self.remaining_size <= 0 {
-                    println!("End ! with read = {:?}", read);
+                    //println!("End ! with read = {:?}", read);
                     return Ok(read);
                 } else {
-                    println!("Read loop: doing_one_chunk");
+                    //println!("Read loop: doing_one_chunk");
                     self.do_one_chunk();
                     self.buffer_cursor = 0;
                 }
