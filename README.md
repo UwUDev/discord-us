@@ -1,5 +1,7 @@
 # Discord Unlimited Storage
 
+# /!\ The readme needs to be updated, it's not up to date.
+
 ## What is this?
 This is a simple rust app that allows you to upload files to discord without any file size limit. I know there is some bandwidth limitations per files, but it still really acceptable, and I'll add async upload/download in the future to have parallel uploads/downloads and go faster. Everything is stored in a sqlite database, so you don't have to worry about losing your files. It uses Aes256Cbc encryption to encrypt your files, so you don't have to worry about your files being analysed by discord and tencent + it avoids discord to remove non ToS compliant files.
 
