@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::{min};
 use std::fs::File;
 use std::io::{Read, Write};
 use aes::Aes256;
@@ -353,7 +353,7 @@ impl ByteRangeStreamDownloader {
 
     fn update_container(&mut self) {
         self.current_container = self.find_container(self.position);
-        println!("Update container: {:?}", self.current_container);
+        //println!("Update container: {:?}", self.current_container);
     }
 
     fn start_container_download(&mut self) {
@@ -362,11 +362,11 @@ impl ByteRangeStreamDownloader {
             let chunk_size = self.get_chunk_real_size() as u64;
             // make start a multiple of chunk_size
             let chunk_start = start / chunk_size;
-            let chunk_end = min(container.chunk_count, (((min(self.range[1], container.bytes_range[1]) - container.bytes_range[0])) / chunk_size) + 1);
+            let chunk_end = min(container.chunk_count, ((min(self.range[1], container.bytes_range[1]) - container.bytes_range[0]) / chunk_size) + 1);
 
             let container_downloader = self.file_downloader.get_container_downloader(container.clone());
 
-            println!("Starting container downloader start: {} || start : {} | end : {}", start, chunk_start, chunk_end);
+            //println!("Starting container downloader start: {} || start : {} | end : {}", start, chunk_start, chunk_end);
 
             self.current_bytestream = container_downloader.get_byte_stream(chunk_start, (chunk_end - chunk_start) as usize).ok();
         }
@@ -390,11 +390,11 @@ impl ByteRangeStreamDownloader {
         };
     }
 
-    fn get_current_chunk_size(&self) -> usize {
+    fn get_current_chunk_size(&self, offset: usize) -> usize {
         let real_size = self.get_chunk_real_size();
         let remaining = self.get_remaining() as usize;
 
-        return min(real_size, remaining);
+        return min(real_size, remaining + offset);
     }
 
     fn get_skip_offset(&self) -> usize {
@@ -406,7 +406,8 @@ impl ByteRangeStreamDownloader {
                 if self.position == self.range[0] {
                     let start = self.position - container.bytes_range[0];
 
-                    let chunk_start = start / container.chunk_size;
+                    let chunk_start = start / chunk_size;
+
 
                     return (self.position - (chunk_start * chunk_size)) as usize;
                 }
@@ -424,7 +425,7 @@ impl Read for ByteRangeStreamDownloader {
 
         while read < buf.len() {
             let buffer_cursor = self.get_buffer_cursor();
-            println!("Read loop {} over {} (position {})", buffer_cursor, self.buffer.len(), self.position);
+            //println!("Read loop {} over {} (position {})", buffer_cursor, self.buffer.len(), self.position);
 
             if buffer_cursor < self.buffer.len() {
                 let remain = min(buf.len() - read, self.buffer.len() - buffer_cursor);
@@ -439,17 +440,15 @@ impl Read for ByteRangeStreamDownloader {
             }
 
             if self.is_container_out_of_bound() {
-                println!("Container out of bound");
+                //println!("Container out of bound");
                 self.update_container();
                 self.start_container_download();
             }
 
             if buffer_cursor >= self.buffer.len() {
-                println!("Loading next chunk");
                 // load next chunk (shrink) into memory
-
-                let size = self.get_current_chunk_size();
-
+                let offset = self.get_skip_offset();
+                let size = self.get_current_chunk_size(offset);
 
                 // if current buffer is not big enough, resize it
                 if size != self.buffer.len() {
@@ -458,8 +457,9 @@ impl Read for ByteRangeStreamDownloader {
 
                 self.read_all_into_buff();
 
-                let offset = self.get_skip_offset();
-                println!("Current size: {}, offset : {}", size, offset);
+
+
+                //println!("Current size: {}, offset : {}", size, offset);
 
                 self.buffer = self.buffer[offset..].to_vec();
                 self.buffer_cursor = Some(0);
