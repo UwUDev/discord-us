@@ -30,7 +30,7 @@ impl Waterfall {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Container {
     pub storage_url: String,
     pub chunk_size: u64,

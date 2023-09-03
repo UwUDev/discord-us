@@ -6,7 +6,6 @@ use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Cbc};
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
-use reqwest::blocking::Client;
 use reqwest::blocking::{Response};
 use reqwest::{StatusCode};
 use sha2::{Digest, Sha256};
@@ -28,9 +27,10 @@ pub trait WaterfallDownloader {
 pub trait ByteRangeDownloader {
     fn get_size(&self) -> u64;
 
-    fn get_range(&self, start: u64, end: u64) -> Result<Vec<u8>, &str>;
+    //fn get_range(&self, start: u64, end: u64) -> ByteRangeStreamDownloader;
 }
 
+#[derive(Clone)]
 pub struct FileDownloader {
     waterfall: Waterfall,
     password: String,
@@ -58,13 +58,18 @@ impl FileDownloader {
     pub fn get_container_downloader(&self, container: Container) -> ContainerDownloader {
         ContainerDownloader::new(container.clone(), self.waterfall.size, self.password.clone())
     }
+
+    pub fn get_range(&self, start: u64, end: u64) -> ByteRangeStreamDownloader {
+        let downloader = ByteRangeStreamDownloader::new([start, end], self.clone());
+
+        downloader
+    }
 }
 
 #[derive(Clone)]
 pub struct ContainerDownloader {
     container: Container,
     key: [u8; 32],
-    client: Client,
     file_size: u64,
 }
 
@@ -82,7 +87,6 @@ impl ContainerDownloader {
             container,
             key,
             file_size,
-            client: create_client(),
         }
     }
 
@@ -152,7 +156,7 @@ impl ByteStream {
             read += r;
         }
 
-       // println!("Download: Read {} bytes (chunk {})", read, self.current_chunk + self.chunk_offset);
+        // println!("Download: Read {} bytes (chunk {})", read, self.current_chunk + self.chunk_offset);
 
         let chunk_start = self.container.bytes_range[0] + (self.current_chunk + self.chunk_offset) * (self.container.chunk_size - METADATA_SIZE as u64);
 
@@ -217,7 +221,7 @@ impl Read for ByteStream {
         let mut read = 0;
 
         while read < buf.len() {
-           // println!("Read loop {:?} over {:?}", self.buffer_cursor, self.buffer.len());
+            // println!("Read loop {:?} over {:?}", self.buffer_cursor, self.buffer.len());
 
             if self.buffer_cursor < self.buffer.len() {
                 let remain = min(buf.len() - read, self.buffer.len() - self.buffer_cursor);
@@ -227,7 +231,7 @@ impl Read for ByteStream {
             }
 
             if self.buffer_cursor >= self.buffer.len() {
-               // println!("Count: {:?} | Current chunk: {:?}", self.count, self.current_chunk);
+                // println!("Count: {:?} | Current chunk: {:?}", self.count, self.current_chunk);
 
                 if self.current_chunk >= self.count as u64 {
                     return Ok(read);
@@ -248,7 +252,6 @@ impl Downloader for FileDownloader {
         let mut f = File::create(file_path).unwrap();
 
         for ctn in self.waterfall.clone().containers.clone() {
-
             let container = self.get_container_downloader(ctn.clone());
             let mut stream = container.get_byte_stream(0, ctn.chunk_count as usize).unwrap();
 
@@ -257,7 +260,7 @@ impl Downloader for FileDownloader {
 
             //println!("to_write: {}", to_write);
 
-            while to_write > 0  {
+            while to_write > 0 {
                 let read = stream.read(&mut buf).unwrap();
 
                 let c = to_write.min(read);
@@ -265,7 +268,6 @@ impl Downloader for FileDownloader {
                 // println!("to_write: {}", to_write);
                 to_write -= c;
             }
-
         }
     }
 }
@@ -274,13 +276,196 @@ impl ByteRangeDownloader for FileDownloader {
     fn get_size(&self) -> u64 {
         self.waterfall.size
     }
+}
 
-    fn get_range(&self, start: u64, end: u64) -> Result<Vec<u8>, &str> {
-        // get containers associated with that range
-        let mut containers: Vec<Container> = Vec::new();
+pub struct ByteRangeStreamDownloader {
+    range: [u64; 2],
+    file_downloader: FileDownloader,
+    position: u64,
+    current_container: Option<Container>,
+    buffer: Vec<u8>,
+    buffer_cursor: Option<usize>,
 
-        containers.sort_by(|a, b| a.bytes_range[0].cmp(&b.bytes_range[0]));
+    current_bytestream: Option<ByteStream>,
+    sorted_containers: Vec<Container>,
+}
 
-        todo!()
+impl ByteRangeStreamDownloader {
+    pub fn new(range: [u64; 2], file_downloader: FileDownloader) -> Self {
+        let mut sorted_containers = file_downloader.waterfall.containers.clone();
+        sorted_containers.sort_by(|a, b| a.bytes_range[0].cmp(&b.bytes_range[0]));
+
+        ByteRangeStreamDownloader {
+            range,
+            file_downloader,
+
+            position: range[0],
+            current_container: None,
+            buffer: Vec::new(),
+            buffer_cursor: None,
+            current_bytestream: None,
+
+            sorted_containers,
+        }
+    }
+
+    fn find_container(&self, start: u64) -> Option<Container> {
+        for container in self.sorted_containers.clone() {
+            if start >= container.bytes_range[0] && start < container.bytes_range[1] {
+                return Some(container);
+            }
+        }
+        None
+    }
+
+    fn get_remaining(&self) -> u64 {
+        self.range[1] - self.position
+    }
+
+    fn read_all_into_buff(&mut self) -> usize {
+        return match self.current_bytestream {
+            Some(ref mut stream) => {
+                let mut read = 0;
+
+                while read < self.buffer.len() {
+                    let r = stream.read(&mut self.buffer[read..]).expect("TODO: panic message");
+                    read += r;
+                }
+
+                read
+            }
+            None => 0
+        };
+    }
+
+    fn is_container_out_of_bound(&self) -> bool {
+        return match self.current_container {
+            Some(ref container) => {
+                self.position >= container.bytes_range[1]
+            }
+            None => true
+        };
+    }
+
+    fn is_position_out_of_bound(&self) -> bool {
+        return self.position >= self.range[1];
+    }
+
+    fn update_container(&mut self) {
+        self.current_container = self.find_container(self.position);
+        println!("Update container: {:?}", self.current_container);
+    }
+
+    fn start_container_download(&mut self) {
+        if let Some(ref container) = self.current_container {
+            let start = self.position - container.bytes_range[0];
+            let chunk_size = self.get_chunk_real_size() as u64;
+            // make start a multiple of chunk_size
+            let chunk_start = start / chunk_size;
+            let chunk_end = min(container.chunk_count, (((min(self.range[1], container.bytes_range[1]) - container.bytes_range[0])) / chunk_size) + 1);
+
+            let container_downloader = self.file_downloader.get_container_downloader(container.clone());
+
+            println!("Starting container downloader start: {} || start : {} | end : {}", start, chunk_start, chunk_end);
+
+            self.current_bytestream = container_downloader.get_byte_stream(chunk_start, (chunk_end - chunk_start) as usize).ok();
+        }
+    }
+
+    fn get_buffer_cursor(&self) -> usize {
+        return match self.buffer_cursor {
+            Some(cursor) => cursor,
+            None => 0
+        };
+    }
+
+    fn set_buffer_cursor(&mut self, cursor: usize) {
+        self.buffer_cursor = Some(cursor);
+    }
+
+    fn get_chunk_real_size(&self) -> usize {
+        return match self.current_container {
+            Some(ref container) => container.chunk_size as usize - METADATA_SIZE,
+            None => 0
+        };
+    }
+
+    fn get_current_chunk_size(&self) -> usize {
+        let real_size = self.get_chunk_real_size();
+        let remaining = self.get_remaining() as usize;
+
+        return min(real_size, remaining);
+    }
+
+    fn get_skip_offset(&self) -> usize {
+        match self.current_container {
+            Some(ref container) => {
+                let chunk_size = self.get_chunk_real_size() as u64;
+
+                // we are in the first chunk
+                if self.position == self.range[0] {
+                    let start = self.position - container.bytes_range[0];
+
+                    let chunk_start = start / container.chunk_size;
+
+                    return (self.position - (chunk_start * chunk_size)) as usize;
+                }
+            }
+            None => {}
+        }
+
+        return 0;
+    }
+}
+
+impl Read for ByteRangeStreamDownloader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut read = 0;
+
+        while read < buf.len() {
+            let buffer_cursor = self.get_buffer_cursor();
+            println!("Read loop {} over {} (position {})", buffer_cursor, self.buffer.len(), self.position);
+
+            if buffer_cursor < self.buffer.len() {
+                let remain = min(buf.len() - read, self.buffer.len() - buffer_cursor);
+                buf[read..(read + remain)].clone_from_slice(&self.buffer[buffer_cursor..(buffer_cursor + remain)]);
+                read += remain;
+                self.position += remain as u64;
+                self.set_buffer_cursor(buffer_cursor + remain);
+            }
+
+            if self.is_position_out_of_bound() {
+                break;
+            }
+
+            if self.is_container_out_of_bound() {
+                println!("Container out of bound");
+                self.update_container();
+                self.start_container_download();
+            }
+
+            if buffer_cursor >= self.buffer.len() {
+                println!("Loading next chunk");
+                // load next chunk (shrink) into memory
+
+                let size = self.get_current_chunk_size();
+
+
+                // if current buffer is not big enough, resize it
+                if size != self.buffer.len() {
+                    self.buffer = vec![0; size];
+                }
+
+                self.read_all_into_buff();
+
+                let offset = self.get_skip_offset();
+                println!("Current size: {}, offset : {}", size, offset);
+
+                self.buffer = self.buffer[offset..].to_vec();
+                self.buffer_cursor = Some(0);
+            }
+        }
+
+        Ok(read)
     }
 }
