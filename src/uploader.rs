@@ -1,24 +1,18 @@
-use std::cmp::{max, min};
+use std::cmp::{min};
 use std::marker::Send;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::rc::Rc;
+use std::io::{Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use aes::{Aes256, NewBlockCipher};
+use aes::{Aes256};
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Cbc};
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use reqwest::blocking::{Body, Client};
 use serde_json::json;
-use sha256::digest;
 use sha2::{Digest, Sha256};
-use crate::database::save_upload;
-use crate::utils::{Block, calculate_file_md5, empty_trash, encrypt_file, Subscription, to_blocks};
 use threadpool::ThreadPool;
 use rand::{RngCore, thread_rng};
-use serde::Serialize;
 use crate::common::{Container, Waterfall};
 use crate::http_client::{create_client, prepare_discord_request};
 
@@ -91,7 +85,7 @@ impl Uploader for FileUploader {
 
         let pool = ThreadPool::new(thread_count as usize);
 
-        for i in 0..thread_count {
+        for _ in 0..thread_count {
             // create file uploader
             let mut uploader = FileThreadedUploader::new(
                 container_count,
@@ -215,10 +209,10 @@ impl FileThreadedUploader {
         let remaining_real_size = self.file_size - cursor as u64;
         let remaining_extra_padding = ((remaining_real_size / (CHUNK_SIZE as u64 - METADATA_SIZE as u64)) + 1) * METADATA_SIZE as u64;
         //println!("Remaining real size: {:?} (extra padding {:?}", remaining_real_size, remaining_extra_padding);
-        let mut remaining_size = min(self.container_size as u64, (remaining_real_size + remaining_extra_padding));
+        let mut remaining_size = min(self.container_size as u64, remaining_real_size + remaining_extra_padding);
 
         if remaining_size % (CHUNK_SIZE as u64) > 0 {
-            remaining_size += ((CHUNK_SIZE as u64) - remaining_size % (CHUNK_SIZE as u64));
+            remaining_size += (CHUNK_SIZE as u64) - remaining_size % (CHUNK_SIZE as u64);
         }
 
         //println!("Remaining size: {:?}", remaining_size);
@@ -355,7 +349,7 @@ impl CustomBody {
 
         //  println!("Buffer size: {:?}, Content size {:?}", self.buffer.len(), content_size);
 
-        let bytes_read = self.file.read(&mut self.buffer[0..content_size]).unwrap();
+        self.file.read(&mut self.buffer[0..content_size]).unwrap();
 
         // println!("Read {:?} bytes from file", bytes_read);
 

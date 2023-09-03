@@ -1,9 +1,14 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{Write};
 use serde::{Deserialize, Serialize};
+use hex_buffer_serde::{Hex as _, HexForm};
 
 pub trait FileWritable {
     fn write_to_file(&self, file_path: String);
+}
+
+pub trait FileReadable {
+    fn from_file(file_path: String) -> Self;
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -22,11 +27,11 @@ impl FileWritable for Waterfall {
     }
 }
 
-impl Waterfall {
-    pub fn from_file(file_path: String) -> Self {
-        serde_json::from_str::<Waterfall>(
-            &std::fs::read_to_string(file_path).unwrap()
-        ).unwrap()
+impl FileReadable for Waterfall {
+    fn from_file(file_path: String) -> Self {
+        let mut file = File::open(file_path).unwrap();
+
+        serde_json::from_reader(&mut file).unwrap()
     }
 }
 
@@ -36,7 +41,27 @@ pub struct Container {
     pub chunk_size: u64,
     pub chunk_count: u64,
 
+    #[serde(with = "HexForm")]
     pub salt: [u8; 16],
 
     pub bytes_range: [u64; 2],
+}
+
+pub enum Subscription {
+    Free,
+    Basic,
+    Classic,
+    // yeah you can still buy it
+    Boost,
+}
+
+impl Subscription {
+    pub fn get_max_chunk_upload_size(&self) -> usize {
+        match *self {
+            Self::Free => 25 * 1024 * 1024,
+            Self::Basic => 50 * 1024 * 1024,
+            Self::Classic => 100 * 1024 * 1024,
+            Self::Boost => 500 * 1024 * 1024,
+        }
+    }
 }
