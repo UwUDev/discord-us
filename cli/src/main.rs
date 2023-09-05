@@ -1,7 +1,7 @@
 mod utils;
 
-use clap::{Parser, Args, Subcommand};
-use clap::builder::Str;
+use clap::{Parser,  Subcommand};
+// use clap::builder::Str;
 
 use discord_us::common::{Waterfall, FileReadable, Subscription, FileWritable};
 use discord_us::downloader::{FileDownloader, Downloader, WaterfallDownloader};

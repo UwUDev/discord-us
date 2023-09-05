@@ -65,3 +65,33 @@ impl Subscription {
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ResumableFileUpload {
+    pub(crate) file_path: String,
+    pub(crate) file_size: u64,
+
+    pub(crate) container_size: u32,
+    pub(crate) remaining_indexes: Vec<u32>,
+    pub(crate) containers: Vec<Container>,
+
+    #[serde(with = "HexForm")]
+    pub(crate) file_hash: [u8; 32],
+
+    pub(crate) thread_count: usize,
+}
+
+impl FileWritable for ResumableFileUpload {
+    fn write_to_file(&self, file_path: String) {
+        let mut file = File::create(file_path).unwrap();
+        file.write_all(serde_json::to_string_pretty(&self).unwrap().as_bytes()).unwrap();
+    }
+}
+
+impl FileReadable for ResumableFileUpload {
+    fn from_file(file_path: String) -> Self {
+        let mut file = File::open(file_path).unwrap();
+
+        serde_json::from_reader(&mut file).unwrap()
+    }
+}

@@ -131,7 +131,7 @@ impl ByteStream {
         let range_start = chunk_offset * container.chunk_size;
         let range_stop = range_start + (count as u64 * container.chunk_size);
 
-        let mut response = create_client().get(container.storage_url.clone())
+        let response = create_client().get(container.storage_url.clone())
             .header("User-Agent", "Mozilla/5.0")
             .header("Range", format!("bytes={}-{}", range_start, range_stop))
             .send()

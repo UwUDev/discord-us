@@ -1,7 +1,7 @@
 use std::cmp::{min};
 use std::collections::VecDeque;
 use std::marker::Send;
-use std::fs::File;
+use std::fs::{File, metadata};
 use std::io::{Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
 use aes::{Aes256};
@@ -14,7 +14,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use threadpool::ThreadPool;
 use rand::{RngCore, thread_rng};
-use crate::common::{Container, Waterfall};
+use crate::common::{Container, Waterfall, FileReadable, FileWritable, ResumableFileUpload};
 use crate::http_client::{create_client, prepare_discord_request};
 
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
@@ -28,6 +28,14 @@ pub trait WaterfallExporter {
     fn export_waterfall_with_password(&self, password: String) -> Waterfall;
 }
 
+pub trait ResumableUploader<T>
+    where T: FileWritable + FileReadable + Clone {
+    fn export_resume_session(&self) -> T;
+
+    fn from_resume_session(resume_session: T) -> std::io::Result<Self>
+        where Self: Sized;
+}
+
 const CHUNK_SIZE: u32 = 1 << 16;
 
 const METADATA_SIZE: usize = 64;
@@ -36,11 +44,13 @@ pub struct FileUploader {
     file_path: String,
     file_size: u64,
 
-    threads_count: u32,
     container_size: u32,
 
     remaining_container_indexes: Arc<Mutex<VecDeque<u32>>>,
+    current_downloading_indexes: Arc<Mutex<Vec<u32>>>,
     containers: Arc<Mutex<Vec<Container>>>,
+
+    pool: Arc<ThreadPool>,
 }
 
 impl FileUploader {
@@ -49,7 +59,7 @@ impl FileUploader {
     }
 
     pub fn new_with_threads_count(file_path: String, container_size: u32, threads_count: u32) -> FileUploader {
-        let file_size = std::fs::metadata(file_path.clone()).unwrap().len();
+        let file_size = Self::file_size(file_path.clone());
 
         let container_count = Self::container_count(file_size, container_size as u64);
         let mut deque: VecDeque<u32> = VecDeque::with_capacity(container_count);
@@ -62,10 +72,17 @@ impl FileUploader {
             file_size,
             file_path: file_path.clone(),
             container_size,
-            threads_count,
             remaining_container_indexes: Arc::new(Mutex::new(deque)),
             containers: Arc::new(Mutex::new(Vec::new())),
+            current_downloading_indexes: Arc::new(Mutex::new(Vec::new())),
+            pool: Arc::new(ThreadPool::new(threads_count as usize)),
         }
+    }
+
+    fn file_size(file_path: String) -> u64 {
+        let meta = metadata(file_path).unwrap();
+
+        meta.len()
     }
 
     fn container_count(file_size: u64, container_size: u64) -> usize {
@@ -75,15 +92,40 @@ impl FileUploader {
 
         (chunk_count as f64 / chunks_per_container as f64).ceil() as usize
     }
+
+    fn file_hash(file_path: String) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        // hash file
+        let mut file = File::open(file_path).unwrap();
+        let mut buffer = [0u8; 1024 * 1024];
+        loop {
+            let bytes_read = file.read(&mut buffer).unwrap();
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[0..bytes_read]);
+        }
+        hasher.finalize().into()
+    }
+}
+
+impl Clone for FileUploader {
+    fn clone(&self) -> Self {
+        FileUploader {
+            file_path: self.file_path.clone(),
+            file_size: self.file_size,
+            container_size: self.container_size,
+            remaining_container_indexes: Arc::clone(&self.remaining_container_indexes),
+            containers: Arc::clone(&self.containers),
+            current_downloading_indexes: Arc::clone(&self.current_downloading_indexes),
+            pool: Arc::clone(&self.pool),
+        }
+    }
 }
 
 impl Uploader for FileUploader {
     fn upload(&mut self, encryption_password: String, token: String, channel_id: u64) -> &Self {
-        let thread_count = self.threads_count.clone();
-
-        let pool = ThreadPool::new(thread_count as usize);
-
-        for _ in 0..thread_count {
+        for _ in 0..self.pool.max_count() {
             // create file uploader
             let mut uploader = FileThreadedUploader::new(
                 self.remaining_container_indexes.clone(),
@@ -94,14 +136,15 @@ impl Uploader for FileUploader {
                 encryption_password.clone(),
                 self.file_size,
                 self.containers.clone(),
+                self.current_downloading_indexes.clone(),
             );
 
-            pool.execute(move || {
+            self.pool.execute(move || {
                 uploader.start_uploading();
             });
         }
 
-        pool.join();
+        self.pool.join();
 
         self
     }
@@ -125,6 +168,70 @@ impl WaterfallExporter for FileUploader {
     }
 }
 
+impl ResumableUploader<ResumableFileUpload> for FileUploader {
+    fn export_resume_session(&self) -> ResumableFileUpload {
+        // Collect remaining indexes
+        let remaining_container_indexes = self.remaining_container_indexes.lock().unwrap().clone();
+
+        // Collect containers
+        let containers = self.containers.lock().unwrap().clone();
+
+        // collect working indexes
+        let working_indexes = self.current_downloading_indexes.lock().unwrap().clone();
+
+        // construct file hash
+        let file_hash = Self::file_hash(self.file_path.clone());
+
+        // push all remaining indexes
+        let mut remaining_indexes = Vec::with_capacity(remaining_container_indexes.len() + working_indexes.len());
+
+        for index in remaining_container_indexes {
+            remaining_indexes.push(index);
+        }
+
+        for index in working_indexes {
+            remaining_indexes.push(index);
+        }
+
+        ResumableFileUpload {
+            file_path: self.file_path.clone(),
+            file_size: self.file_size,
+            container_size: self.container_size,
+            remaining_indexes,
+            containers,
+            file_hash,
+            thread_count: self.pool.max_count(),
+        }
+    }
+
+    fn from_resume_session(resume_session: ResumableFileUpload) -> std::io::Result<Self>
+        where Self: Sized {
+        let file_size = Self::file_size(resume_session.file_path.clone());
+
+        if file_size != resume_session.file_size {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "File size mismatch"));
+        }
+
+        let file_hash = Self::file_hash(resume_session.file_path.clone());
+
+        if file_hash != resume_session.file_hash {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "File hash mismatch"));
+        }
+
+        let file_uploader = FileUploader {
+            file_path: resume_session.file_path.clone(),
+            file_size,
+            container_size: resume_session.container_size,
+            remaining_container_indexes: Arc::new(Mutex::new(VecDeque::from(resume_session.remaining_indexes.clone()))),
+            current_downloading_indexes: Arc::new(Mutex::new(Vec::new())),
+            containers: Arc::new(Mutex::new(resume_session.containers.clone())),
+            pool: Arc::new(ThreadPool::new(resume_session.thread_count)),
+        };
+
+        Ok(file_uploader)
+    }
+}
+
 struct FileThreadedUploader {
     current_container_index: Arc<Mutex<VecDeque<u32>>>,
 
@@ -138,6 +245,7 @@ struct FileThreadedUploader {
     client: Client,
 
     containers: Arc<Mutex<Vec<Container>>>,
+    current_downloading_indexes: Arc<Mutex<Vec<u32>>>,
 }
 
 unsafe impl Send for FileThreadedUploader {}
@@ -151,6 +259,7 @@ impl FileThreadedUploader {
            encryption_password: String,
            file_size: u64,
            containers: Arc<Mutex<Vec<Container>>>,
+           current_downloading_indexes: Arc<Mutex<Vec<u32>>>,
     ) -> FileThreadedUploader {
         FileThreadedUploader {
             container_size,
@@ -162,18 +271,21 @@ impl FileThreadedUploader {
             file_size,
             client: create_client(),
             containers,
+            current_downloading_indexes,
         }
     }
 
     fn start_uploading(&mut self) {
         while let Some(container_index) = self.get_processing_container_index() {
-            //self.upload_container(container_index);
+            self.set_current_downloading_index(container_index);
+
             println!("Uploading Container {:?}", container_index);
 
-            let container = self.upload(container_index as u32);
-            {
-                self.containers.lock().unwrap().push(container.clone());
-            }
+            let container = self.upload(container_index);
+
+            self.add_container(container);
+
+            self.remove_current_downloading_index(container_index);
         }
 
         return;
@@ -215,7 +327,7 @@ impl FileThreadedUploader {
 
         let file_uploader = CustomBody::new(key, remaining_size as i64, self.file_path.clone(), cursor);
 
-        let body = Body::sized(file_uploader, remaining_size as u64);
+        let body = Body::sized(file_uploader, remaining_size);
 
 
         self.client.put(upload_url)
@@ -244,6 +356,24 @@ impl FileThreadedUploader {
         //println!("Trying to find work! (remaining indexes : {:?}", deque);
 
         deque.pop_front()
+    }
+
+    fn set_current_downloading_index(&mut self, index: u32) {
+        let mut deque = self.current_downloading_indexes.lock().unwrap();
+
+        deque.push(index);
+    }
+
+    fn remove_current_downloading_index(&mut self, index: u32) {
+        let mut deque = self.current_downloading_indexes.lock().unwrap();
+
+        deque.retain(|&x| x != index);
+    }
+
+    fn add_container(&mut self, container: Container) {
+        let mut deque = self.containers.lock().unwrap();
+
+        deque.push(container);
     }
 
     fn chunks_per_container(&self) -> u32 {
