@@ -1,4 +1,5 @@
 use std::cmp::{min};
+use std::collections::VecDeque;
 use std::marker::Send;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -38,7 +39,7 @@ pub struct FileUploader {
     threads_count: u32,
     container_size: u32,
 
-    current_container_index: Arc<Mutex<u32>>,
+    remaining_container_indexes: Arc<Mutex<VecDeque<u32>>>,
     containers: Arc<Mutex<Vec<Container>>>,
 }
 
@@ -50,28 +51,29 @@ impl FileUploader {
     pub fn new_with_threads_count(file_path: String, container_size: u32, threads_count: u32) -> FileUploader {
         let file_size = std::fs::metadata(file_path.clone()).unwrap().len();
 
+        let container_count = Self::container_count(file_size, container_size as u64);
+        let mut deque: VecDeque<u32> = VecDeque::with_capacity(container_count);
+
+        for i in 0..container_count {
+            deque.push_back(i as u32 + 1);
+        }
+
         FileUploader {
             file_size,
             file_path: file_path.clone(),
             container_size,
             threads_count,
-            current_container_index: Arc::new(Mutex::new(0)),
+            remaining_container_indexes: Arc::new(Mutex::new(deque)),
             containers: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
-    fn chunks_per_container(&self) -> u32 {
-        self.container_size / CHUNK_SIZE
-    }
+    fn container_count(file_size: u64, container_size: u64) -> usize {
+        let chunk_count = (file_size / (CHUNK_SIZE as u64 - METADATA_SIZE as u64)) + 1;
 
-    fn container_count(&self) -> u32 {
-        let chunk_count = (self.file_size / (CHUNK_SIZE as u64)) + 1;
+        let chunks_per_container = container_size / (CHUNK_SIZE as u64);
 
-        let chunks_per_container = self.chunks_per_container();
-
-        //println!("?: {:?}, {:?}", chunk_count, chunks_per_container);
-
-        (chunk_count as f64 / chunks_per_container as f64).ceil() as u32
+        (chunk_count as f64 / chunks_per_container as f64).ceil() as usize
     }
 }
 
@@ -79,17 +81,12 @@ impl Uploader for FileUploader {
     fn upload(&mut self, encryption_password: String, token: String, channel_id: u64) -> &Self {
         let thread_count = self.threads_count.clone();
 
-        let container_count = self.container_count();
-
-        println!("Container count: {:?}", container_count);
-
         let pool = ThreadPool::new(thread_count as usize);
 
         for _ in 0..thread_count {
             // create file uploader
             let mut uploader = FileThreadedUploader::new(
-                container_count,
-                self.current_container_index.clone(),
+                self.remaining_container_indexes.clone(),
                 self.file_path.clone(),
                 self.container_size,
                 token.clone(),
@@ -129,8 +126,7 @@ impl WaterfallExporter for FileUploader {
 }
 
 struct FileThreadedUploader {
-    container_count: u32,
-    current_container_index: Arc<Mutex<u32>>,
+    current_container_index: Arc<Mutex<VecDeque<u32>>>,
 
     file_path: String,
     file_size: u64,
@@ -147,8 +143,7 @@ struct FileThreadedUploader {
 unsafe impl Send for FileThreadedUploader {}
 
 impl FileThreadedUploader {
-    fn new(container_count: u32,
-           current_container_index: Arc<Mutex<u32>>,
+    fn new(current_container_index: Arc<Mutex<VecDeque<u32>>>,
            file_path: String,
            container_size: u32,
            token: String,
@@ -158,7 +153,6 @@ impl FileThreadedUploader {
            containers: Arc<Mutex<Vec<Container>>>,
     ) -> FileThreadedUploader {
         FileThreadedUploader {
-            container_count,
             container_size,
             file_path,
             current_container_index,
@@ -172,9 +166,7 @@ impl FileThreadedUploader {
     }
 
     fn start_uploading(&mut self) {
-        let mut container_index = self.get_processing_container_index();
-
-        while container_index != -1 {
+        while let Some(container_index) = self.get_processing_container_index() {
             //self.upload_container(container_index);
             println!("Uploading Container {:?}", container_index);
 
@@ -182,7 +174,6 @@ impl FileThreadedUploader {
             {
                 self.containers.lock().unwrap().push(container.clone());
             }
-            container_index = self.get_processing_container_index();
         }
 
         return;
@@ -247,16 +238,12 @@ impl FileThreadedUploader {
         };
     }
 
-    fn get_processing_container_index(&mut self) -> i32 {
-        let mut value = self.current_container_index.lock().unwrap();
+    fn get_processing_container_index(&mut self) -> Option<u32> {
+        let mut deque = self.current_container_index.lock().unwrap();
 
-        if *value + 1 > self.container_count {
-            return -1;
-        }
+        //println!("Trying to find work! (remaining indexes : {:?}", deque);
 
-        *value += 1;
-
-        return value.clone() as i32;
+        deque.pop_front()
     }
 
     fn chunks_per_container(&self) -> u32 {
