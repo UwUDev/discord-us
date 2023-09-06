@@ -11,6 +11,7 @@ use reqwest::{StatusCode};
 use sha2::{Digest, Sha256};
 use crate::common::{Container, Waterfall};
 use crate::http_client::create_client;
+use crate::signal::{ReportSignal, ProgressionRange, LinearPartSignal, PartProgression};
 
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 
@@ -30,10 +31,39 @@ pub trait ByteRangeDownloader {
     //fn get_range(&self, start: u64, end: u64) -> ByteRangeStreamDownloader;
 }
 
+
+#[derive(Clone)]
+pub struct DownloadProgressionSignal {
+    signal: Option<Box<dyn ReportSignal<ProgressionRange<u64>>>>,
+}
+
+impl DownloadProgressionSignal {
+    pub fn new() -> Self {
+        Self {
+            signal: None,
+        }
+    }
+
+    fn get_report_signal(&self, cursor: u64) -> Option<Box<dyn ReportSignal<u64>>> {
+        match &self.signal {
+            Some(signal) => Some(Box::new(LinearPartSignal::new(
+                signal.clone(),
+                cursor,
+            ))),
+            None => None
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct FileDownloader {
     waterfall: Waterfall,
     password: String,
+
+    signal: DownloadProgressionSignal,
+}
+
+unsafe impl Send for FileDownloader {
 }
 
 impl WaterfallDownloader for FileDownloader {
@@ -44,6 +74,8 @@ impl WaterfallDownloader for FileDownloader {
         FileDownloader {
             waterfall,
             password,
+
+            signal: DownloadProgressionSignal::new(),
         }
     }
 }
@@ -53,6 +85,10 @@ impl FileDownloader {
         self.password = password.clone();
 
         self
+    }
+
+    pub fn with_signal(&mut self, signal: &PartProgression<u64>) {
+        self.signal.signal = Some(Box::new(signal.clone()));
     }
 
     pub fn get_container_downloader(&self, container: Container) -> ContainerDownloader {
@@ -251,6 +287,8 @@ impl Downloader for FileDownloader {
     fn download_file(&self, file_path: String) {
         let mut f = File::create(file_path).unwrap();
 
+        let signal = &mut self.signal.get_report_signal(0);
+
         for ctn in self.waterfall.clone().containers.clone() {
             let container = self.get_container_downloader(ctn.clone());
             let mut stream = container.get_byte_stream(0, ctn.chunk_count as usize).unwrap();
@@ -266,6 +304,11 @@ impl Downloader for FileDownloader {
                 let c = to_write.min(read);
                 f.write_all(&mut buf[..c]).expect("TODO: panic message");
                 // println!("to_write: {}", to_write);
+
+                if let Some(s) = signal {
+                    s.report_data(c as u64);
+                }
+
                 to_write -= c;
             }
         }
@@ -456,7 +499,6 @@ impl Read for ByteRangeStreamDownloader {
                 }
 
                 self.read_all_into_buff();
-
 
 
                 //println!("Current size: {}, offset : {}", size, offset);

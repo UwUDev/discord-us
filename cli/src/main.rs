@@ -2,11 +2,13 @@ mod utils;
 
 use std::thread::sleep;
 use std::io::{stdout, Write};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use clap::{Parser, Subcommand};
 // use clap::builder::Str;
 
 use discord_us::common::{Waterfall, FileReadable, Subscription, FileWritable};
-use discord_us::downloader::{FileDownloader, Downloader, WaterfallDownloader};
+use discord_us::downloader::{FileDownloader, Downloader, WaterfallDownloader, ByteRangeDownloader};
 use discord_us::signal::{PartProgression, Signal};
 
 use std::time::Instant;
@@ -61,6 +63,8 @@ fn main() {
 
     match args.command {
         Commands::Download { password, waterfall, output } => {
+            let mut signal: PartProgression<u64> = PartProgression::new();
+
             let waterfall = Waterfall::from_file(waterfall);
 
             println!("Downloading file {} ({}) into {}", waterfall.filename, ByteSize(waterfall.size).to_string_as(true), output);
@@ -72,9 +76,39 @@ fn main() {
                 file_downloader.set_password(password);
             }
 
-            file_downloader.download_file(output);
+            file_downloader.with_signal(&signal);
 
-            println!("Downloaded succeed {:?}", now.elapsed());
+            let f = Arc::new(Mutex::new(file_downloader.clone()));
+
+            let handle = thread::spawn(move || {
+                f.lock().unwrap().download_file(output);
+            });
+
+
+            while signal.get_total() != file_downloader.get_size() {
+                sleep(std::time::Duration::from_millis(50));
+
+                signal.retrim_ranges();
+
+                let progress = signal.get_total();
+                let data = signal.get_data();
+
+                let elapsed = now.elapsed().as_secs_f64();
+
+                let bar = to_progress_bar(data, file_downloader.get_size(), 50, '#', '-');
+
+                print!("\rProgress: {} {}/{} ({}/s) ({:.2}%)",
+                       bar,
+                       ByteSize(progress).to_string_as(true),
+                       ByteSize(file_downloader.get_size()).to_string_as(true),
+                       ByteSize((progress as f64 / elapsed) as u64).to_string_as(true),
+                       (progress as f64 / file_downloader.get_size() as f64) * 100.0);
+
+                stdout().flush().unwrap();
+            }
+            handle.join().unwrap();
+
+            println!("\nDownloaded succeed {:?}", now.elapsed());
         }
         Commands::Upload { input, password, waterfall, container_size, channel_id, token } => {
             let mut signal: PartProgression<u64> = PartProgression::new();

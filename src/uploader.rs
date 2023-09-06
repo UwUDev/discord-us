@@ -366,10 +366,14 @@ impl FileThreadedUploader {
 
         //let cursor = (((container_index - 1) * self.container_size) as i64) - ((METADATA_SIZE as i64) * (max(0, (container_index as i64) - 2)) * (self.chunks_per_container() as i64));
         let cursor = (container_index as i64 - 1) * self.chunks_per_container() as i64 * (CHUNK_SIZE as i64 - METADATA_SIZE as i64);
+
         //println!("cursor: {:?}", cursor);
+
         let remaining_real_size = self.file_size - cursor as u64;
         let remaining_extra_padding = ((remaining_real_size / (CHUNK_SIZE as u64 - METADATA_SIZE as u64)) + 1) * METADATA_SIZE as u64;
+
         //println!("Remaining real size: {:?} (extra padding {:?}", remaining_real_size, remaining_extra_padding);
+
         let mut remaining_size = min(self.container_size as u64, remaining_real_size + remaining_extra_padding);
 
         if remaining_size % (CHUNK_SIZE as u64) > 0 {
@@ -413,12 +417,18 @@ impl FileThreadedUploader {
 
         let storage_url = self.post_message(filename.clone(), upload_filename);
 
+        //println!("Computing byte range end (cursor: {:?}, remaining_size: {:?}, file_size {:?}, metadata size: {:?})", cursor, remaining_size, self.file_size, (remaining_size / CHUNK_SIZE as u64) * METADATA_SIZE as u64);
+        let byte_range_end = min(self.file_size, cursor as u64 + remaining_size - ((remaining_size / CHUNK_SIZE as u64) * METADATA_SIZE as u64));
+
         return Container {
             storage_url,
             chunk_count: remaining_size / CHUNK_SIZE as u64,
             chunk_size: CHUNK_SIZE as u64,
             salt,
-            bytes_range: [cursor as u64, min(self.file_size, (cursor as u64) + remaining_size - (self.chunks_per_container() as u64 * METADATA_SIZE as u64))],
+            bytes_range: [
+                cursor as u64,
+                byte_range_end
+            ],
         };
     }
 
@@ -483,7 +493,7 @@ impl FileThreadedUploader {
     }
 
     fn post_message(&self, filename: String, upload_filename: String) -> String {
-       // println!("Sending message with filename {:?} and upload_filename {:?}", filename, upload_filename);
+        // println!("Sending message with filename {:?} and upload_filename {:?}", filename, upload_filename);
 
         let url = format!("https://discord.com/api/v9/channels/{}/messages", self.arguments.channel_id);
 

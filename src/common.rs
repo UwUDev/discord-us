@@ -11,7 +11,7 @@ pub trait FileReadable {
     fn from_file(file_path: String) -> Self;
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Waterfall {
     pub filename: String,
     pub password: String,
