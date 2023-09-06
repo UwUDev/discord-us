@@ -258,3 +258,28 @@ mod tests {
         // println!("{:?}", signal.get_data());
     }
 }
+
+// Callback signal
+#[derive(Clone)]
+pub struct CallbackSignal<CB> {
+    pub callback: CB,
+}
+
+
+impl<CB> CallbackSignal<CB> {
+    fn trigger_callback<P> (self: &'_ mut Self, param: P)
+        where
+            CB : Fn(P) -> (),
+    {
+        (self.callback)(param);
+    }
+}
+
+impl<CB> ReportSignal<()> for CallbackSignal<CB>
+    where
+        CB: Fn(()) -> () + Clone + 'static,
+{
+    fn report_data(&mut self, t: ()) {
+        self.trigger_callback(t);
+    }
+}
