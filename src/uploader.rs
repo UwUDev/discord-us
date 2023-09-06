@@ -16,7 +16,7 @@ use threadpool::ThreadPool;
 use rand::{RngCore, thread_rng};
 use crate::common::{Container, Waterfall, FileReadable, FileWritable, ResumableFileUpload};
 use crate::http_client::{create_client, prepare_discord_request};
-use crate::signal::{LinearPartSignal, LinearProgression, PartProgression, ProgressionRange, ReportSignal, Signal};
+use crate::signal::{LinearPartSignal, PartProgression, ProgressionRange, ReportSignal};
 
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 

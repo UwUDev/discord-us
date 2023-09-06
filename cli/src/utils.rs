@@ -25,7 +25,7 @@ pub fn to_progress_bar(
 
     while c < total {
         if let Some(range) = ranges.get(range_cursor) {
-            if c + step >= range.range_start && c + step < range.range_end {
+            if c + step >= range.range_start && (c + step).min(total) <= range.range_end {
                 result.push(character_loaded);
             } else {
                 result.push(character_unloaded);

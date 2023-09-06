@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 
 use sorted_vec::SortedVec;
 use dyn_clone::{DynClone, clone_trait_object};
-use pbkdf2::password_hash::Output;
 
 pub trait ReportSignal<D>: DynClone
     where D: Sized {
@@ -149,7 +148,7 @@ impl<T: Integer> PartProgression<T> {
 
         let mut ranges = self.progression.lock().unwrap();
 
-        let mut vec = ranges.to_vec();
+        let vec = ranges.to_vec();
 
         let mut prev_i = 0;
 

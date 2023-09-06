@@ -116,7 +116,7 @@ fn main() {
                          ByteSize((progress as f64 / elapsed) as u64).to_string_as(true),
                          (progress as f64 / total_upload_size as f64) * 100.0);
 
-                stdout().flush();
+                stdout().flush().unwrap();
 
                 if progress == total_upload_size {
                     println!("\nFinalizing upload...");
