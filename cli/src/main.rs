@@ -1,15 +1,19 @@
 mod utils;
 
-use clap::{Parser,  Subcommand};
+use std::thread::sleep;
+use std::io::{stdout, Write};
+use clap::{Parser, Subcommand};
 // use clap::builder::Str;
 
 use discord_us::common::{Waterfall, FileReadable, Subscription, FileWritable};
 use discord_us::downloader::{FileDownloader, Downloader, WaterfallDownloader};
+use discord_us::signal::{PartProgression, Signal};
 
 use std::time::Instant;
 
 use bytesize::ByteSize;
-use discord_us::uploader::{FileUploader, Uploader, WaterfallExporter};
+use discord_us::uploader::{FileUploadArguments, FileUploader, Uploader, WaterfallExporter};
+use crate::utils::to_progress_bar;
 
 #[derive(Parser, Debug)]
 #[command(name = "discord-us", version = "0.1.0", about = "Discord Unlimited Storage")]
@@ -73,6 +77,8 @@ fn main() {
             println!("Downloaded succeed {:?}", now.elapsed());
         }
         Commands::Upload { input, password, waterfall, container_size, channel_id, token } => {
+            let mut signal: PartProgression<u64> = PartProgression::new();
+
             let mut file_uploader = FileUploader::new(input, container_size as u32);
             let now = Instant::now();
 
@@ -81,13 +87,50 @@ fn main() {
                 Some(pass) => pass
             };
 
-            file_uploader.upload(pass.clone(), token, channel_id);
+            let mut upload_args = FileUploadArguments::new(pass.clone(), token.clone(), channel_id);
+
+            upload_args.with_signal(&signal);
+
+            let total_upload_size = file_uploader.upload(upload_args);
+
+            let start = Instant::now();
+
+            println!("\n");
+
+            loop {
+                sleep(std::time::Duration::from_millis(50));
+
+                signal.retrim_ranges();
+
+                let progress = signal.get_total();
+                let data = signal.get_data();
+
+                let elapsed = start.elapsed().as_secs_f64();
+
+                let bar = to_progress_bar(data, total_upload_size, 50, '#', '-');
+
+                print!("\rProgress: {} {}/{} ({}/s) ({:.2}%)",
+                         bar,
+                         ByteSize(progress).to_string_as(true),
+                         ByteSize(total_upload_size).to_string_as(true),
+                         ByteSize((progress as f64 / elapsed) as u64).to_string_as(true),
+                         (progress as f64 / total_upload_size as f64) * 100.0);
+
+                stdout().flush();
+
+                if progress == total_upload_size {
+                    println!("\nFinalizing upload...");
+                    sleep(std::time::Duration::from_millis(5000));
+                    break;
+                }
+            }
 
             let waterfall_struct = if password.is_some() {
                 file_uploader.export_waterfall()
             } else {
                 file_uploader.export_waterfall_with_password(pass.clone())
             };
+
 
             println!("Exporting waterfall");
 

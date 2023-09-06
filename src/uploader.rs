@@ -16,11 +16,14 @@ use threadpool::ThreadPool;
 use rand::{RngCore, thread_rng};
 use crate::common::{Container, Waterfall, FileReadable, FileWritable, ResumableFileUpload};
 use crate::http_client::{create_client, prepare_discord_request};
+use crate::signal::{LinearPartSignal, LinearProgression, PartProgression, ProgressionRange, ReportSignal, Signal};
 
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 
-pub trait Uploader {
-    fn upload(&mut self, encryption_password: String, token: String, channel_id: u64) -> &Self;
+pub trait Uploader<T, R>
+    where T: Sized + Clone
+{
+    fn upload(&mut self, data: T) -> R;
 }
 
 pub trait WaterfallExporter {
@@ -107,6 +110,27 @@ impl FileUploader {
         }
         hasher.finalize().into()
     }
+
+    fn compute_chunk_count(&self) -> usize {
+        let real_size = CHUNK_SIZE as usize - METADATA_SIZE;
+
+        let chunks_per_container = (self.container_size as usize) / (CHUNK_SIZE as usize);
+
+        let container = Self::container_count(self.file_size, self.container_size as u64);
+
+        // the first N-1 containers are always full:
+        let mut chunk_count = (container - 1) * chunks_per_container;
+
+        // for the last container, we need to compute the remaining bytes.
+        let used_bytes = chunk_count * (real_size);
+
+        let remaining = self.file_size as usize - used_bytes;
+
+        // we ask ourself how much containers can fit in remaing space
+        chunk_count += (remaining / real_size) + 1;
+
+        chunk_count
+    }
 }
 
 impl Clone for FileUploader {
@@ -123,17 +147,54 @@ impl Clone for FileUploader {
     }
 }
 
-impl Uploader for FileUploader {
-    fn upload(&mut self, encryption_password: String, token: String, channel_id: u64) -> &Self {
+#[derive(Clone)]
+pub struct FileUploadArguments {
+    encryption_password: String,
+    token: String,
+    channel_id: u64,
+
+    signal: Option<Box<dyn ReportSignal<ProgressionRange<u64>>>>,
+    join: bool,
+}
+
+// impl Clone for Box<dyn ReportSignal<ProgressionRange<u64>>> {
+//     fn clone(&self) -> Self {
+//
+//     }
+// }
+
+impl FileUploadArguments {
+    pub fn new(encryption_password: String, token: String, channel_id: u64) -> FileUploadArguments {
+        FileUploadArguments {
+            encryption_password,
+            token,
+            channel_id,
+            signal: None,
+            join: true,
+        }
+    }
+
+    pub fn with_signal(&mut self, signal: &PartProgression<u64>) -> &Self {
+        self.signal = Some(Box::new(signal.clone()));
+
+        self.join = false;
+
+        self
+    }
+}
+
+impl Uploader<FileUploadArguments, u64> for FileUploader {
+    /// Upload the file using the arguments
+    /// Returning the number of bytes uploaded
+    /// (Or being uploaded if a signal is passed)
+    fn upload(&mut self, arguments: FileUploadArguments) -> u64 {
         for _ in 0..self.pool.max_count() {
             // create file uploader
             let mut uploader = FileThreadedUploader::new(
                 self.remaining_container_indexes.clone(),
                 self.file_path.clone(),
                 self.container_size,
-                token.clone(),
-                channel_id,
-                encryption_password.clone(),
+                arguments.clone(),
                 self.file_size,
                 self.containers.clone(),
                 self.current_downloading_indexes.clone(),
@@ -144,9 +205,11 @@ impl Uploader for FileUploader {
             });
         }
 
-        self.pool.join();
+        if arguments.join {
+            self.pool.join();
+        }
 
-        self
+        self.compute_chunk_count() as u64 * CHUNK_SIZE as u64
     }
 }
 
@@ -238,9 +301,8 @@ struct FileThreadedUploader {
     file_path: String,
     file_size: u64,
     container_size: u32,
-    token: String,
-    channel_id: u64,
-    encryption_password: String,
+
+    arguments: FileUploadArguments,
 
     client: Client,
 
@@ -254,9 +316,7 @@ impl FileThreadedUploader {
     fn new(current_container_index: Arc<Mutex<VecDeque<u32>>>,
            file_path: String,
            container_size: u32,
-           token: String,
-           channel_id: u64,
-           encryption_password: String,
+           arguments: FileUploadArguments,
            file_size: u64,
            containers: Arc<Mutex<Vec<Container>>>,
            current_downloading_indexes: Arc<Mutex<Vec<u32>>>,
@@ -265,9 +325,7 @@ impl FileThreadedUploader {
             container_size,
             file_path,
             current_container_index,
-            token,
-            channel_id,
-            encryption_password,
+            arguments,
             file_size,
             client: create_client(),
             containers,
@@ -279,7 +337,7 @@ impl FileThreadedUploader {
         while let Some(container_index) = self.get_processing_container_index() {
             self.set_current_downloading_index(container_index);
 
-            println!("Uploading Container {:?}", container_index);
+            //println!("Uploading Container {:?}", container_index);
 
             let container = self.upload(container_index);
 
@@ -296,19 +354,19 @@ impl FileThreadedUploader {
 
         let mut salt = [0u8; 16];
 
-        println!("Doing upload of index {:?}", container_index);
+        //println!("Doing upload of index {:?}", container_index);
 
         thread_rng().fill_bytes(&mut salt);
 
         let mut key = [0u8; 32];
-        pbkdf2::<Hmac<Sha256>>(self.encryption_password.as_bytes(), &salt, 10000, &mut key);
+        pbkdf2::<Hmac<Sha256>>(self.arguments.encryption_password.as_bytes(), &salt, 10000, &mut key);
 
 
         //println!("Computing cursor chunks_per_container: {:?}", self.chunks_per_container());
 
         //let cursor = (((container_index - 1) * self.container_size) as i64) - ((METADATA_SIZE as i64) * (max(0, (container_index as i64) - 2)) * (self.chunks_per_container() as i64));
         let cursor = (container_index as i64 - 1) * self.chunks_per_container() as i64 * (CHUNK_SIZE as i64 - METADATA_SIZE as i64);
-
+        //println!("cursor: {:?}", cursor);
         let remaining_real_size = self.file_size - cursor as u64;
         let remaining_extra_padding = ((remaining_real_size / (CHUNK_SIZE as u64 - METADATA_SIZE as u64)) + 1) * METADATA_SIZE as u64;
         //println!("Remaining real size: {:?} (extra padding {:?}", remaining_real_size, remaining_extra_padding);
@@ -325,7 +383,21 @@ impl FileThreadedUploader {
 
         //println!("Got upload url: {:?}", upload_url);
 
-        let file_uploader = CustomBody::new(key, remaining_size as i64, self.file_path.clone(), cursor);
+        let report_signal =
+            if let Some(signal) = self.arguments.signal.clone() {
+                let cursor_with_metadata = ((container_index as u64) - 1) * self.chunks_per_container() as u64 * (CHUNK_SIZE as u64);
+                Some(Box::new(LinearPartSignal::new(signal.clone(), cursor_with_metadata)) as Box<dyn ReportSignal<u64>>)
+            } else {
+                None
+            };
+
+        let file_uploader = CustomBody::new(
+            key,
+            remaining_size as i64,
+            self.file_path.clone(),
+            cursor,
+            report_signal,
+        );
 
         let body = Body::sized(file_uploader, remaining_size);
 
@@ -381,9 +453,9 @@ impl FileThreadedUploader {
     }
 
     fn request_attachment(&self, filename: String, size: u64) -> (String, String) {
-        println!("Requesting attachment of size {:?}", size);
+        //println!("Requesting attachment of size {:?}", size);
 
-        let url = format!("https://discord.com/api/v9/channels/{}/attachments", self.channel_id);
+        let url = format!("https://discord.com/api/v9/channels/{}/attachments", self.arguments.channel_id);
 
         let payload = json!(
             {
@@ -400,7 +472,7 @@ impl FileThreadedUploader {
 
         let mut request = self.client.post(url);
 
-        request = prepare_discord_request(request, self.token.clone());
+        request = prepare_discord_request(request, self.arguments.token.clone());
 
         let resp = request.json(&payload).send().unwrap().json::<serde_json::Value>().unwrap();
 
@@ -411,14 +483,14 @@ impl FileThreadedUploader {
     }
 
     fn post_message(&self, filename: String, upload_filename: String) -> String {
-        println!("Sending message with filename {:?} and upload_filename {:?}", filename, upload_filename);
+       // println!("Sending message with filename {:?} and upload_filename {:?}", filename, upload_filename);
 
-        let url = format!("https://discord.com/api/v9/channels/{}/messages", self.channel_id);
+        let url = format!("https://discord.com/api/v9/channels/{}/messages", self.arguments.channel_id);
 
         let payload = json!(
             {
                 "content": "",
-                "channel_id": self.channel_id,
+                "channel_id": self.arguments.channel_id,
                 "type": 0,
                 "attachments": [
                     {
@@ -432,12 +504,12 @@ impl FileThreadedUploader {
 
         let req = self.client.post(url);
 
-        let resp = prepare_discord_request(req, self.token.clone()).json(&payload)
+        let resp = prepare_discord_request(req, self.arguments.token.clone()).json(&payload)
             .send().unwrap().json::<serde_json::Value>().unwrap();
 
         let file_url = resp["attachments"][0]["url"].as_str().unwrap();
 
-        println!("Message has file url: {:?}", file_url);
+        //println!("Message has file url: {:?}", file_url);
 
         file_url.to_string()
     }
@@ -451,6 +523,8 @@ struct CustomBody {
     file: File,
     buffer_cursor: usize,
     buffer: Vec<u8>,
+
+    signal: Option<Box<dyn ReportSignal<u64>>>,
 }
 
 unsafe impl Send for CustomBody {}
@@ -501,13 +575,13 @@ impl CustomBody {
         self.remaining_size -= CHUNK_SIZE as i64;
     }
 
-    pub fn new(key: [u8; 32], remaining_size: i64, file_path: String, cursor: i64) -> CustomBody {
+    pub fn new(key: [u8; 32], remaining_size: i64, file_path: String, cursor: i64, signal: Option<Box<dyn ReportSignal<u64>>>) -> CustomBody {
         let mut file = File::open(file_path.clone()).unwrap();
         //println!("Seeking to {:?}", cursor);
 
         file.seek(SeekFrom::Current(cursor)).unwrap();
 
-        CustomBody { key, remaining_size, file, buffer: vec![0; CHUNK_SIZE as usize], buffer_cursor: CHUNK_SIZE as usize }
+        CustomBody { key, remaining_size, file, buffer: vec![0; CHUNK_SIZE as usize], buffer_cursor: CHUNK_SIZE as usize, signal }
     }
 }
 
@@ -531,13 +605,19 @@ impl Read for CustomBody {
             if self.buffer_cursor >= CHUNK_SIZE as usize {
                 if self.remaining_size <= 0 {
                     //println!("End ! with read = {:?}", read);
-                    return Ok(read);
+                    break;
                 } else {
                     //println!("Read loop: doing_one_chunk");
                     self.do_one_chunk();
                     self.buffer_cursor = 0;
                 }
             }
+        }
+
+        // report read;
+
+        if let Some(signal) = self.signal.as_mut() {
+            signal.report_data(read as u64);
         }
 
         Ok(read)
