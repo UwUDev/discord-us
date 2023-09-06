@@ -289,7 +289,10 @@ impl Downloader for FileDownloader {
 
         let signal = &mut self.signal.get_report_signal(0);
 
-        for ctn in self.waterfall.clone().containers.clone() {
+        let mut containers = self.waterfall.clone().containers.clone();
+        containers.sort_by(|a,b| a.bytes_range[0].cmp(&b.bytes_range[0]));
+
+        for ctn in containers.iter() {
             let container = self.get_container_downloader(ctn.clone());
             let mut stream = container.get_byte_stream(0, ctn.chunk_count as usize).unwrap();
 
