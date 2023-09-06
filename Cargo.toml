@@ -21,3 +21,4 @@ threadpool = "1.8.1"
 rand = "0.8.5"
 serde = { version = "1.0.188", features = ["derive"] }
 hex-buffer-serde = "0.4.0"
+sorted-vec = "0.8.2"

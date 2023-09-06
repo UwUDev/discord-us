@@ -293,6 +293,7 @@ dependencies = [
  "serde_json",
  "sha2 0.9.9",
  "sha256",
+ "sorted-vec",
  "threadpool",
 ]
 
@@ -1079,6 +1080,12 @@ dependencies = [
  "libc",
  "windows-sys",
 ]
+
+[[package]]
+name = "sorted-vec"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0047b8207660638866f228b4b4147e98cc8efb190a70cd63d5cb899a4a539a8"
 
 [[package]]
 name = "subtle"
