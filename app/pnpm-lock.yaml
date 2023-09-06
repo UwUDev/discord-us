@@ -19,15 +19,24 @@ devDependencies:
   '@tsconfig/svelte':
     specifier: ^5.0.0
     version: 5.0.0
+  deepmerge:
+    specifier: ^4.3.1
+    version: 4.3.1
   svelte:
     specifier: ^4.0.5
     version: 4.0.5
   svelte-check:
     specifier: ^3.4.6
     version: 3.4.6(svelte@4.0.5)
+  svelte-ionicons:
+    specifier: ^0.7.2
+    version: 0.7.2(svelte@4.0.5)
   svelte-preprocess:
     specifier: ^5.0.0
     version: 5.0.0(svelte@4.0.5)(typescript@5.0.2)
+  svelte-routing:
+    specifier: ^2.3.0
+    version: 2.3.0
   tslib:
     specifier: ^2.6.0
     version: 2.6.0
@@ -1004,6 +1013,14 @@ packages:
       svelte: 4.0.5
     dev: true
 
+  /svelte-ionicons@0.7.2(svelte@4.0.5):
+    resolution: {integrity: sha512-soICqtqQ6kSBwly3oOyVaoB6ajmgWSMR8tsEKl3sts3lCknFAH7/4F5eT5lnNZW2v2c+SC1y6nk304tHJaWAmA==}
+    peerDependencies:
+      svelte: ^3.54.0 || ^4.0.0
+    dependencies:
+      svelte: 4.0.5
+    dev: true
+
   /svelte-preprocess@5.0.0(svelte@4.0.5)(typescript@5.0.2):
     resolution: {integrity: sha512-q7lpa7i2FBu8Pa+G0MmuQQWETBwCKgsGmuq1Sf6n8q4uaG9ZLcLP0Y+etC6bF4sE6EbLxfiI38zV6RfPe3RSfg==}
     engines: {node: '>= 14.10.0'}
@@ -1097,6 +1114,10 @@ packages:
       strip-indent: 3.0.0
       svelte: 4.0.5
       typescript: 5.2.2
+    dev: true
+
+  /svelte-routing@2.3.0:
+    resolution: {integrity: sha512-M4KY7YrJ9txzn1ssLUa0dfkAxg7IuNpYMMspm/KoQKh/pHMGpCTAMn1q+gSxyUZNGDX1pq12fF2VRUq4+gBfxA==}
     dev: true
 
   /svelte@4.0.5:

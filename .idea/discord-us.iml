@@ -6,10 +6,12 @@
       <sourceFolder url="file://$MODULE_DIR$/cli/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/aa/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/app/src-tauri/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/aa/target" />
       <excludeFolder url="file://$MODULE_DIR$/cli/target" />
       <excludeFolder url="file://$MODULE_DIR$/src/aa/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/app/src-tauri/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
