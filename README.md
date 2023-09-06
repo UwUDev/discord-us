@@ -9,6 +9,10 @@ download the file from Discord's server.
 It uses Aes256Cbc encryption to encrypt your files, so you don't have to worry about your files being analysed by
 discord and tencent + it avoids discord to remove non ToS compliant files.
 
+## Demonstration
+
+![Demonstration](./.github/assets/discord-us-cli.gif)
+
 ## How to use it?
 
 For the moment, there is 2 ways of using it: via the command line or via the lib.
