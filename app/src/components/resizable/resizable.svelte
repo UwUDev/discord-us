@@ -34,7 +34,7 @@
             if (typeof width === "string") {
                 width = `${p / fWidth * 100}%`
             } else {
-                width = `${p}px`;
+                width = p;
             }
 
         } else if (drag === "top") {
@@ -54,7 +54,7 @@
         <div on:mousedown={(e) => {drag = cord; pos = [e.clientX, e.clientY]; s = captureSize()}}
 
              class="handle"
-             style="right:-5px; top:0px; width: {cord === 'right' ? '10px' : width}; height:{cord === 'top' ? '10px': height}; cursor: {cord === 'right' ? 'col-resize' : 'row-resize'}">
+             style="right:-6px; top:0px; width: {cord === 'right' ? '10px' : width}; height:{cord === 'top' ? '10px': height}; cursor: {cord === 'right' ? 'col-resize' : 'row-resize'}">
 
         </div>
     {/each}
@@ -75,5 +75,7 @@
 
     .handle {
         position: absolute;
+        z-index: 10;
+        /*background-color: rgba(0, 0, 0, 0.2);*/
     }
 </style>

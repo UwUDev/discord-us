@@ -1,11 +1,14 @@
 <script lang="ts">
     import LeftBar from "./left-bar.svelte";
+    import Table from "./table.svelte";
 </script>
 
 <div class="container">
     <LeftBar />
 
-    <div class="transfers">A</div>
+    <div class="transfers">
+        <Table />
+    </div>
 </div>
 
 <style>
@@ -19,5 +22,6 @@
         width: 100%;
         height: 100%;
         border: 1px solid #000;
+        margin-left: 1px;
     }
 </style>

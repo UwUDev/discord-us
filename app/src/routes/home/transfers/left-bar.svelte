@@ -21,5 +21,6 @@
         background-color: #f5f5f5;
         height: 100%;
         width: 100%;
+        border-left: 1px solid rgba(176, 176, 176, 0.3);
     }
 </style>

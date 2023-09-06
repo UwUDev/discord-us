@@ -1,4 +1,4 @@
-import {writable} from 'svelte/store';
+import {writable, get} from 'svelte/store';
 import {invoke} from '@tauri-apps/api/tauri'
 import deepmerge from "deepmerge";
 
@@ -7,6 +7,14 @@ const Settings = {
 
     leftBar: {
         statusOpen: true
+    },
+
+    transfers: {
+        columns: [
+            ["name", 140],
+            ["size", 80],
+        ],
+        sort: ["name", "asc"]
     }
 } as const
 
@@ -20,7 +28,11 @@ export async function loadSettings() {
 
     if (str) {
         const json = JSON.parse(str);
-        settings.update((s) => deepmerge(s, json));
+        settings.update((s) => deepmerge(s, json, {
+            arrayMerge(target: any[], source: any[], options?: deepmerge.ArrayMergeOptions): any[] {
+                return source;
+            }
+        }));
     }
 }
 
@@ -43,7 +55,7 @@ function createDebounce(d: number) {
     }
 }
 
-const settingsDebounce = createDebounce(250);
+const settingsDebounce = createDebounce(1000);
 
 settings.subscribe((value) => {
     // send update to rust
@@ -54,5 +66,9 @@ settings.subscribe((value) => {
         invoke('save_settings', {settings: jsonValue});
     });
 });
+
+window.addEventListener("beforeunload", () => {
+    invoke('save_settings', {settings: JSON.stringify(get(settings))});
+})
 
 export default {};

@@ -1,4 +1,3 @@
-use std::fs;
 use std::fs::{read_to_string, write};
 use tauri::command;
 
@@ -18,10 +17,6 @@ impl<'a> Settings<'a> {
     }
 
     fn write_settings(&self, contents: String) {
-        fs::metadata(self.file_path).ok().map(|d| {
-            println!("File exists: {}", d.is_file());
-        });
-
         write(self.file_path, contents).unwrap();
     }
 }
