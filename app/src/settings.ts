@@ -5,6 +5,8 @@ import deepmerge from "deepmerge";
 const Settings = {
     statusWitdh: "15%",
 
+    filter: '',
+
     leftBar: {
         statusOpen: true
     },

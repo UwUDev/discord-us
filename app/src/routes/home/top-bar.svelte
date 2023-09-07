@@ -1,9 +1,12 @@
 <script lang="ts">
     import {Link, TrashBin, AddCircle, Play, Pause, SettingsSharp} from 'svelte-ionicons';
+    import {settings} from "../../settings";
+    import Input from "../../components/input.svelte";
 
 </script>
 
 <div class="bar">
+    <div class="actions">
     <button>
         <Link tabindex="-1" style="transform: scale(1.5)" color="#1e90ff"/>
     </button>
@@ -29,6 +32,11 @@
     <button>
         <SettingsSharp tabindex="-1" style="transform: scale(1.5)" color="#1e90ff"/>
     </button>
+    </div>
+
+    <div class="filter">
+        <Input bind:value={$settings.filter} />
+    </div>
 </div>
 
 <style>
@@ -39,6 +47,7 @@
         padding-top: 2px;
         padding-bottom: 2px;
         align-items: center;
+        justify-content: space-between;
     }
 
     .separator {
@@ -49,7 +58,7 @@
         background-color: #bbb;
     }
 
-    .bar > button {
+    .actions > button {
         border-radius: 2px;
         background-color: transparent;
         border: 1px solid transparent;
@@ -60,8 +69,17 @@
         align-items: center;
     }
 
-    .bar > button:hover {
+    .actions > button:hover {
         border-color: rgb(184, 240, 220);
         background-color: rgba(184, 255, 244, 0.4);
+    }
+
+    .actions {
+        display: flex;
+        align-items: center;
+    }
+
+    .filter {
+        padding-right: 10px;
     }
 </style>

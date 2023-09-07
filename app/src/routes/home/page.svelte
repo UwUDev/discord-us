@@ -1,11 +1,29 @@
 <script lang="ts">
+
     import TopBar from "./top-bar.svelte";
     import {Shuffle, BookSharp} from "svelte-ionicons"
     import Transfers from "./transfers/transfers.svelte"
+    import { handleDrop } from "./filedrop"
+    import {onDestroy, onMount} from "svelte";
+    import {appWindow} from "@tauri-apps/api/window";
 
     let view = 'transfers';
 
     let views = [["transfers", Shuffle], ["logs", BookSharp]] as const;
+
+    let listenCancel: Promise<(() => void)> | undefined;
+
+    onMount(() => {
+        listenCancel = appWindow.onFileDropEvent(({payload})=> {
+            if (payload.type === "drop") {
+                handleDrop(payload.paths)
+            }
+        })
+    })
+
+    onDestroy(async () => {
+        (await listenCancel)?.();
+    })
 </script>
 
 <div>

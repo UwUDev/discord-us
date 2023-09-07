@@ -6,6 +6,10 @@
     import Resizable from "../../../components/resizable/resizable.svelte";
 
     import { Columns, displayColumnsSelector } from "./columns"
+
+    $: filter = $settings.filter || undefined;
+
+    $: items = invoke("get_items", { filter })
 </script>
 
 <table>

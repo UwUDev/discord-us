@@ -3,10 +3,14 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::settings::{Settings};
+use crate::database::{Database};
 use tauri::{AppHandle};
+
 
 pub struct AppState {
     pub settings: Mutex<Option<Settings>>,
+
+    pub database: Mutex<Option<Database>>
 }
 
 pub trait AppDirectory {
