@@ -1,41 +1,46 @@
 <script lang="ts">
-    import {Link, TrashBin, AddCircle, Play, Pause, SettingsSharp} from 'svelte-ionicons';
+    import {Link, TrashBin, AddCircle, Play, Pause, SettingsSharp, Search} from 'svelte-ionicons';
     import {settings} from "../../settings";
     import Input from "../../components/input.svelte";
+    import {invoke} from "@tauri-apps/api"
 
 </script>
 
 <div class="bar">
     <div class="actions">
-    <button>
-        <Link tabindex="-1" style="transform: scale(1.5)" color="#1e90ff"/>
-    </button>
-    <button>
-        <AddCircle tabindex="-1" style="transform: scale(1.5)" color="#1e90ff"/>
-    </button>
-    <button>
-        <TrashBin tabindex="-1" style="transform: scale(1.5)" color="#ff0000"/>
-    </button>
+        <button>
+            <Link tabindex="-1" color="#1e90ff"/>
+        </button>
+        <button on:click={() => {
+        invoke("open_window", {url: `index.html?path=upload`, title: "Upload file"})
+    }}>
+            <AddCircle tabindex="-1" color="#1e90ff"/>
+        </button>
+        <button>
+            <TrashBin tabindex="-1" color="#ff0000"/>
+        </button>
 
-    <div class="separator"/>
+        <div class="separator"/>
 
-    <button>
-        <Play tabindex="-1" style="transform: scale(1.5)" color="#32cd32"/>
-    </button>
+        <button>
+            <Play tabindex="-1" color="#32cd32"/>
+        </button>
 
-    <button>
-        <Pause tabindex="-1" style="transform: scale(1.5)" color="#d2691e"/>
-    </button>
+        <button>
+            <Pause tabindex="-1" color="#d2691e"/>
+        </button>
 
-    <div class="separator"/>
+        <div class="separator"/>
 
-    <button>
-        <SettingsSharp tabindex="-1" style="transform: scale(1.5)" color="#1e90ff"/>
-    </button>
+        <button>
+            <SettingsSharp tabindex="-1" color="#1e90ff"/>
+        </button>
     </div>
 
     <div class="filter">
-        <Input bind:value={$settings.filter} />
+        <Input bind:value={$settings.filter} placeholder="Filter waterfall names...">
+            <Search size="20px" style="padding-left: 2px" color="#1e90ff" slot="before"/>
+        </Input>
     </div>
 </div>
 
@@ -67,6 +72,14 @@
         display: flex;
         justify-content: center;
         align-items: center;
+    }
+
+    .actions > button > :global(svg) {
+        transform: scale(1.5);
+    }
+
+    .actions > button:active > :global(svg) {
+        transform: scale(1.5) translate3d(0.5px, 0.5px, 1px) !important;
     }
 
     .actions > button:hover {

@@ -8,9 +8,9 @@ mod commands;
 
 use tauri::{Manager, State, command};
 use crate::database::{Database, get_items};
-use crate::state::{AppState, AppInitializer};
+use crate::state::{AppState, AppInitializer, WindowManager};
 use crate::settings::{get_settings, save_settings, Settings};
-use crate::commands::{handle_file_drop};
+use crate::commands::{handle_file_drop, open_window, pick_file};
 
 
 
@@ -19,6 +19,8 @@ fn main() {
         .manage(AppState {
             settings: Default::default(),
             database: Default::default(),
+
+            window_manager: WindowManager::new(),
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -27,6 +29,8 @@ fn main() {
             get_items,
 
             handle_file_drop,
+            open_window,
+            pick_file,
         ])
         .plugin(tauri_plugin_context_menu::init())
         .setup(|app| {

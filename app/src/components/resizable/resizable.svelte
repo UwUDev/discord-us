@@ -43,7 +43,9 @@
     }
 </script>
 
-<svelte:window on:mousemove={handleMove} on:mouseup={() => drag = null}/>
+<svelte:window on:mousemove={handleMove} on:mouseup={(e) => {
+    if (drag) {e.stopImmediatePropagation(); e.preventDefault()}
+    drag = null}}/>
 
 <div bind:this={elem} class="resizable"
      style="width: {width}; height: {height}; user-select: {drag ? 'none':'auto'}">
@@ -51,7 +53,7 @@
         <slot/>
     </div>
     {#each resize_cords as cord}
-        <div on:mousedown={(e) => {drag = cord; pos = [e.clientX, e.clientY]; s = captureSize()}}
+        <div on:mousedown|stopPropagation|preventDefault={(e) => {drag = cord; pos = [e.clientX, e.clientY]; s = captureSize()}}
 
              class="handle"
              style="right:-6px; top:0px; width: {cord === 'right' ? '10px' : width}; height:{cord === 'top' ? '10px': height}; cursor: {cord === 'right' ? 'col-resize' : 'row-resize'}">

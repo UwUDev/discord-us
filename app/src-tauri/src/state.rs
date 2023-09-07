@@ -1,5 +1,6 @@
 use std::fs::create_dir_all;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU32;
 use std::sync::Mutex;
 
 use crate::settings::{Settings};
@@ -10,7 +11,25 @@ use tauri::{AppHandle};
 pub struct AppState {
     pub settings: Mutex<Option<Settings>>,
 
-    pub database: Mutex<Option<Database>>
+    pub database: Mutex<Option<Database>>,
+
+    pub window_manager: WindowManager,
+}
+
+pub struct WindowManager {
+    unique_counter: AtomicU32,
+}
+
+impl WindowManager {
+    pub fn new () -> Self {
+        Self {
+            unique_counter: AtomicU32::new(0),
+        }
+    }
+
+    pub fn unique_window_label(&self) -> String {
+        format!("window-{}", self.unique_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
+    }
 }
 
 pub trait AppDirectory {
