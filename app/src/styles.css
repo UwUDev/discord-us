@@ -23,7 +23,7 @@ svg {
   background-color: rgb(230, 230, 230);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 16px;
 }
 
 .form {
@@ -48,6 +48,10 @@ svg {
   width: 100px;
 }
 
+.value > span {
+  white-space: nowrap;
+}
+
 .label {
   position: absolute;
   top: -12px;
@@ -66,4 +70,15 @@ svg {
 
 .submit > button {
   width: 80px;
+}
+
+.form.disabled > .value{
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+input[type="checkbox"] {}
+
+input[type="checkbox"]:checked {
+  accent-color: #1e90ff;
 }

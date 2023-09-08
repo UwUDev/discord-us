@@ -188,6 +188,20 @@ impl Uploader<FileUploadArguments, u64> for FileUploader {
     /// Returning the number of bytes uploaded
     /// (Or being uploaded if a signal is passed)
     fn upload(&mut self, arguments: FileUploadArguments) -> u64 {
+        // if we come from a resume session, we can already populate the signal
+        if let Some(mut signal) = arguments.signal.clone() {
+            for container in self.containers.lock().unwrap().iter() {
+                let chunk_count_before = container.bytes_range[0] / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
+
+                let c_start = container.bytes_range[0] + (chunk_count_before * CHUNK_SIZE as u64);
+
+                let chunk_count = (container.bytes_range[1] - container.bytes_range[0]) / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
+                let c_end = container.bytes_range[1] + chunk_count * METADATA_SIZE as u64;
+
+                signal.report_data(ProgressionRange::of(c_start, c_end));
+            }
+        }
+
         for _ in 0..self.pool.max_count() {
             // create file uploader
             let mut uploader = FileThreadedUploader::new(

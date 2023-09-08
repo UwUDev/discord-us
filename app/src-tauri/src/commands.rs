@@ -48,7 +48,7 @@ pub async fn open_window(app_handle: AppHandle, url: String, title: String, labe
         .center()
         .build();
 
-    if let(w) = window {
+    if let (w) = window {
         // window created!
     }
 }
@@ -80,4 +80,8 @@ pub struct UploadFilePayload {
 }
 
 #[command]
-pub fn upload_file(window: Window, payload: UploadFilePayload) {}
+pub fn upload_file(window: Window, payload: UploadFilePayload) {
+    // we need to register the file
+    // in database
+    // then call a "resume function" on download manager
+}

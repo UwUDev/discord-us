@@ -8,7 +8,7 @@
     import {appWindow} from '@tauri-apps/api/window';
 
 
-    let value = $params.fpath as string || '';
+    let fpath = $params.fpath as string || '';
 
     let cancel: Promise<() => void> | undefined;
     let callbackx = Date.now();
@@ -17,7 +17,7 @@
         cancel = listen<{ callback?: string; path: string }>("file-picked", ({payload: x}) => {
             console.log(x)
             if (x.callback === "upload-file-" + callbackx) {
-                value = x.path;
+                fpath = x.path;
             }
         });
     })
@@ -33,6 +33,10 @@
     onDestroy(async () => {
         (await cancel)?.();
     })
+
+    let threads = 2;
+
+    let password = undefined;
 </script>
 
 <div class="page">
@@ -41,7 +45,7 @@
 
         <div class="value">
             <span>File: </span>
-            <Input bind:value/>
+            <Input bind:value={fpath}/>
         </div>
 
         <div class="value">
@@ -50,10 +54,39 @@
         </div>
     </div>
 
-    <div class="submit">
-        <Button on:click={() => invoke("upload_file", {
-            path: value,
-        })}>
+    <div class="form">
+        <div class="label">Upload parameters</div>
+
+        <div class="value">
+            <span>Threads count: </span>
+            <Input>
+                <input type="number" bind:value={threads} slot="input"/>
+            </Input>
+        </div>
+    </div>
+
+    <div class="form">
+        <div class="label">Encryption parameters</div>
+
+        <div class="form" class:disabled={password === undefined} style="margin-top: 16px">
+            <div class="label"> <input type="checkbox" on:input={e => password =  e.target.checked ? '': undefined} > Protect with a password</div>
+            <div class="value">
+                <span>Password: </span>
+                <Input>
+                    <input type="password" bind:value={password} slot="input"/>
+                </Input>
+            </div>
+        </div>
+    </div>
+
+    <div class="submit" style="margin-top: auto">
+        <Button disabled={!fpath} on:click={() => invoke("upload_file", {
+            payload: {
+                file_path: fpath,
+                thread_count: threads,
+                password,
+            },
+        }).then(() => appWindow.close())}>
             Upload file
         </Button>
 

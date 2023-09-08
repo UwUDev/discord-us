@@ -5,6 +5,7 @@ mod settings;
 mod state;
 mod database;
 mod commands;
+mod manager;
 
 use tauri::{Manager, State, command};
 use crate::database::{Database, get_items, get_options, set_options, get_option};

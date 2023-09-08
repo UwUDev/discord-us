@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, command};
 use crate::state::{AppInitializer, AppDirectory, AppState};
 
-const DB_VERSION: u32 = 1;
+const DB_VERSION: u32 = 2;
 
 pub struct Database {
     pub connection: Connection,
@@ -87,7 +87,19 @@ impl Versionned for Database {
                     );
                     "
                 ).unwrap();
-            },
+            }
+            2 => {
+                tx.execute_batch(
+                    "
+                    ALTER TABLE items ADD COLUMN resume_data TEXT DEFAULT NULL;
+                    ALTER TABLE items ADD COLUMN progression_data TEXT DEFAULT NULL;
+                    ALTER TABLE items ADD COLUMN user_password BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE items ADD COLUMN password TEXT DEFAULT NULL;
+                    ALTER TABLE items ADD COLUMN thread_count INT DEFAULT 1;
+                    ALTER TABLE items ADD COLUMN file_path TEXT DEFAULT NULL;
+                    "
+                ).unwrap()
+            }
             _ => {}
         }
 
@@ -123,24 +135,37 @@ impl ItemStatus {
 
 #[derive(Serialize, Debug)]
 pub struct Item {
-    id: i32,
-    name: String,
-    status: ItemStatus,
+    pub id: i32,
+    pub name: String,
+    pub status: ItemStatus,
+
+    pub file_path: String,
+    pub user_password: bool,
+    pub password: String,
+    pub progression_data: Option<String>,
+    pub resume_data: Option<String>,
+    pub thread_count: u32,
 }
 
 #[command]
-pub fn get_items (state: State<'_, AppState>, filter: Option<&str>) -> Vec<Item> {
+pub fn get_items(state: State<'_, AppState>, filter: Option<&str>) -> Vec<Item> {
     let mut database = state.database.lock().unwrap();
 
     let mut database = database.as_mut().unwrap();
 
-    let mut stmt = database.connection.prepare("SELECT * FROM items WHERE name = coalesce(?, name)").unwrap();
+    let mut stmt = database.connection.prepare("SELECT id, name, status, progression_data, password, user_password, thread_count,file_path FROM items WHERE name = coalesce(?, name)").unwrap();
 
     let items = stmt.query_map([filter], |row| {
         Ok(Item {
             id: row.get(0)?,
             name: row.get(1)?,
             status: ItemStatus::from_code(row.get(2)?),
+            resume_data: None,
+            progression_data: row.get(3)?,
+            password: row.get(4)?,
+            user_password: row.get(5)?,
+            thread_count: row.get(6)?,
+            file_path: row.get(7)?,
         })
     }).unwrap().map(|item| item.unwrap()).collect();
 
@@ -157,10 +182,10 @@ pub fn get_options(state: State<'_, AppState>, options: Vec<String>) -> Vec<Opti
 
     let mut stmt = database.connection.prepare("SELECT name, value FROM options WHERE name IN rarray(?1)").unwrap();
 
-    let values:Vec<rusqlite::types::Value> = options.clone().into_iter().map(rusqlite::types::Value::from).collect();
+    let values: Vec<rusqlite::types::Value> = options.clone().into_iter().map(rusqlite::types::Value::from).collect();
     let ptr = std::rc::Rc::new(values);
 
-    let opts : Vec<(String, String)> = stmt.query_map(&[&ptr], |row| {
+    let opts: Vec<(String, String)> = stmt.query_map(&[&ptr], |row| {
         Ok((row.get(0)?, row.get(1)?))
     }).unwrap().map(|item| item.unwrap()).collect();
 
@@ -175,7 +200,7 @@ pub fn get_options(state: State<'_, AppState>, options: Vec<String>) -> Vec<Opti
         }
     }
 
-   // println!("Loaded {:?} => {:?}", options, res);
+    // println!("Loaded {:?} => {:?}", options, res);
 
     res
 }
@@ -199,15 +224,15 @@ pub fn set_options(state: State<'_, AppState>, options: Vec<String>) {
 
     tx.commit().unwrap();
 
-   // println!("Saved {:?}", options);
+    // println!("Saved {:?}", options);
 }
 
 #[command]
-pub fn get_option (state: State<'_, AppState>, option: String) -> Option<String> {
+pub fn get_option(state: State<'_, AppState>, option: String) -> Option<String> {
     _get_option(&state.database.lock().unwrap().as_ref().unwrap(), &option)
 }
 
-pub fn _get_option (db: &Database, name: &String) -> Option<String> {
+pub fn _get_option(db: &Database, name: &String) -> Option<String> {
     let mut stmt = db.connection.prepare("SELECT value FROM options WHERE name = ?").unwrap();
 
     stmt.query_row([name], |row| row.get(0)).ok()

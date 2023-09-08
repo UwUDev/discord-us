@@ -11,7 +11,9 @@
 <div class="d">
     <slot name="before"/>
     <div class="b">
-        <input placeholder={placeholder} class:hide={hide} class:hidden={hide && hidden} bind:value on:input/>
+        <slot name="input">
+            <input placeholder={placeholder} class:hide={hide} class:hidden={hide && hidden} bind:value on:input/>
+        </slot>
         {#if hide}
             <div class="fake" class:h={!hidden}>{"•".repeat(value.length)}</div>
             <div class="view" on:click={()=>hidden=!hidden}><Eye /></div>
@@ -46,13 +48,25 @@
         align-items: center;
     }
 
-    input {
+    .b > :global(input) {
         width: 100%;
         height: 100%;
         border: none;
         outline: none;
         background: transparent;
         caret-color: black;
+    }
+
+    .b > :global(input[type=number]::-webkit-inner-spin-button),
+    .b > :global(input[type=number]::-webkit-outer-spin-button) {
+        -webkit-appearance: inner-spin-button !important;
+        opacity: 1 !important;
+        position: absolute;
+        top: -2px;
+        right: 0;
+        height: 100%;
+        background-color: blue !important;
+        border: 2.5px solid red !important;
     }
 
     .d:has( input:focus) {
