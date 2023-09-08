@@ -19,3 +19,51 @@ svg {
   pointer-events: none;
 }
 
+.page {
+  background-color: rgb(230, 230, 230);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.form {
+  position: relative;
+  border: 1px solid #bbb;
+  padding: 8px;
+  display: flex;
+  padding-top: 12px;
+  font-size: 13px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.value {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.value > button {
+  width: 100px;
+}
+
+.label {
+  position: absolute;
+  top: -12px;
+  left: 5px;
+  background-color: rgb(230, 230, 230);
+  font-size: 12px;
+}
+
+.submit {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.submit > button {
+  width: 80px;
+}

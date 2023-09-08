@@ -7,11 +7,10 @@ mod database;
 mod commands;
 
 use tauri::{Manager, State, command};
-use crate::database::{Database, get_items};
+use crate::database::{Database, get_items, get_options, set_options, get_option};
 use crate::state::{AppState, AppInitializer, WindowManager};
 use crate::settings::{get_settings, save_settings, Settings};
-use crate::commands::{handle_file_drop, open_window, pick_file};
-
+use crate::commands::{handle_file_drop, open_window, pick_file, upload_file};
 
 
 fn main() {
@@ -27,10 +26,15 @@ fn main() {
             save_settings,
 
             get_items,
+            get_options,
+            set_options,
+            get_option,
 
             handle_file_drop,
             open_window,
             pick_file,
+            upload_file,
+
         ])
         .plugin(tauri_plugin_context_menu::init())
         .setup(|app| {

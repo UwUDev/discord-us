@@ -1,6 +1,6 @@
 use std::fs::{read_to_string, write};
 use std::path::PathBuf;
-use tauri::{AppHandle, command, State};
+use tauri::{AppHandle, command, Manager, State, Window};
 use crate::state::{AppState, AppDirectory, AppInitializer};
 
 #[derive(Clone)]
@@ -27,7 +27,7 @@ impl Settings {
         contents.ok()
     }
 
-    fn write_settings(&self, contents: String) {
+    fn write_settings(&self, contents: &String) {
         write(&self.file_path, contents).unwrap();
     }
 }
@@ -38,6 +38,15 @@ pub fn get_settings(app_state: State<'_, AppState>) -> Option<String> {
 }
 
 #[command]
-pub fn save_settings(app_state: State<'_, AppState>, settings: String) {
-    app_state.settings.lock().unwrap().as_ref().map(|s| s.write_settings(settings));
+pub fn save_settings(app_handle: AppHandle, window: Window, settings: String) {
+    let state : State<AppState> = app_handle.state();
+
+    // to think: use cache + delayed writes
+    state.settings.lock().unwrap().as_ref().map(|s| s.write_settings(&settings));
+
+    for (label, w) in app_handle.windows().iter() {
+        if label != window.label() {
+            app_handle.emit_to(label, "settings-updated", &settings).unwrap();
+        }
+    }
 }

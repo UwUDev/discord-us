@@ -1,8 +1,8 @@
 <script lang="ts">
-
+    export let disabled: boolean = false;
 </script>
 
-<button on:click>
+<button on:click {disabled}>
     <slot />
 </button>
 
@@ -15,7 +15,7 @@
 
         transition: all .1s;
     }
-    button:hover {
+    button:hover:not(:disabled) {
         background-color: rgba(30, 144, 255, 0.1);
         border-color:  rgba(30, 144, 255, 1);
     }

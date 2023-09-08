@@ -2,11 +2,13 @@
     import {params} from "../../params";
     import Input from "../../components/input.svelte"
     import {invoke} from "@tauri-apps/api"
-    import {onDestroy, onMount} from "svelte";
+    import {afterUpdate, onDestroy, onMount} from "svelte";
     import {listen} from "@tauri-apps/api/event";
-    import Button from "../../components/button.svelte"
+    import Button from "../../components/button.svelte";
+    import {appWindow} from '@tauri-apps/api/window';
 
-    let value = $params.fpath as string||'';
+
+    let value = $params.fpath as string || '';
 
     let cancel: Promise<() => void> | undefined;
     let callbackx = Date.now();
@@ -18,6 +20,14 @@
                 value = x.path;
             }
         });
+    })
+
+    let u = false;
+    afterUpdate(() => {
+        if (!u) {
+            u = true;
+            appWindow.show();
+        }
     })
 
     onDestroy(async () => {
@@ -41,11 +51,13 @@
     </div>
 
     <div class="submit">
-        <Button>
+        <Button on:click={() => invoke("upload_file", {
+            path: value,
+        })}>
             Upload file
         </Button>
 
-        <Button class="submit">
+        <Button on:click={()=>appWindow.close()} class="submit">
             Cancel
         </Button>
     </div>
@@ -54,52 +66,7 @@
 <style>
     .page {
         padding: 16px 8px;
-        background-color: rgb(230, 230, 230);
+
         height: calc(100vh - 32px);
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-
-    .form {
-        position: relative;
-        border: 1px solid #bbb;
-        padding: 8px;
-        display: flex;
-        padding-top: 12px;
-        font-size: 13px;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .value {
-        display: flex;
-        width: 100%;
-        justify-content: space-between;
-        gap: 8px;
-    }
-
-    .value > :global(button) {
-        width: 100px;
-    }
-
-    .label {
-        position: absolute;
-        top: -12px;
-        left: 5px;
-        background-color: rgb(230, 230, 230);
-        font-size: 12px;
-    }
-
-    .submit {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-top: 8px;
-        gap: 8px;
-    }
-
-    .submit > :global(button) {
-        width: 80px;
     }
 </style>

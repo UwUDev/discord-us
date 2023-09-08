@@ -32,8 +32,10 @@
 
         <div class="separator"/>
 
-        <button>
-            <SettingsSharp tabindex="-1" color="#1e90ff"/>
+        <button on:click={() => {
+        invoke("open_window", {url: `index.html?path=options`, title: "Options", label: "options" /* define label = 1 instance of window allowed*/})
+    }}>
+            <SettingsSharp tabindex="-1" color="#1e90ff" />
         </button>
     </div>
 
