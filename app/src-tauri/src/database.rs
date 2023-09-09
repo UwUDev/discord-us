@@ -207,6 +207,14 @@ pub fn _update_item(database: &Database, id: i32, progression_data: Option<Strin
     stmt.execute(rusqlite::params![progression_data, resume_data, status.to_code(), id]).unwrap();
 }
 
+pub fn notify_item_updated(database: &Database, id: i32, app_handle: &AppHandle) {
+    use tauri::Manager;
+
+    if let Ok(item) = _get_item(database, id) {
+        app_handle.emit_all("push_item", item).unwrap();
+    }
+}
+
 #[command]
 pub fn get_options(state: State<'_, AppState>, options: Vec<String>) -> Vec<Option<String>> {
     let mut database = state.database.lock().unwrap();

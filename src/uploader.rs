@@ -153,16 +153,20 @@ impl FileUploader {
 
     pub fn get_uploaded_ranges(&self) -> Vec<ProgressionRange<u64>> {
         self.containers.lock().unwrap().iter().map(|container| {
-            let chunk_count_before = container.bytes_range[0] / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
+            let chunk_count_before = (container.bytes_range[0] / (CHUNK_SIZE as u64 - METADATA_SIZE as u64));
 
             let c_start = container.bytes_range[0] + (chunk_count_before * METADATA_SIZE as u64);
 
-            let chunk_count = (container.bytes_range[1] - container.bytes_range[0]) / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
-            let mut c_end = container.bytes_range[1] + chunk_count * METADATA_SIZE as u64;
+            let mut c_size = container.bytes_range[1] - container.bytes_range[0];
 
-            if c_end % (CHUNK_SIZE as u64) > 0 {
-                c_end += (CHUNK_SIZE as u64) - c_end % (CHUNK_SIZE as u64); // add extra padding
+            if c_size % (CHUNK_SIZE as u64) > 0 {
+                c_size += (CHUNK_SIZE as u64) - c_size % (CHUNK_SIZE as u64); // add extra padding
             }
+
+            let chunk_count = (c_size) / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
+            let c_end = c_start + (chunk_count * CHUNK_SIZE as u64);
+
+
 
             ProgressionRange::of(c_start, c_end)
         }).collect()

@@ -4,6 +4,7 @@
 
     import {settings} from "../../../settings";
     import Resizable from "../../../components/resizable/resizable.svelte";
+    import ProgressBar from "../../../components/progressbar.svelte"
 
     import {Columns, displayColumnsSelector} from "./columns"
     import {onDestroy, onMount} from "svelte";
@@ -57,8 +58,12 @@
 
     onMount(() => {
         unlistenFn.push(listen<any>('push_item', (e) => {
-            console.log(e)
-            items.push(e.payload);
+            let index = items.findIndex((item) => item.id === e.payload.id);
+            if (index !== -1) {
+                items[index] = e.payload;
+            } else {
+                items.push(e.payload);
+            }
         }));
 
         unlistenFn.push(listen<{ id: number; progress: number; total: number; ranges: [number, number][] }>('upload_progress', (e) => {
@@ -119,8 +124,14 @@
                 <td style="max-width: {width}px;">
                     <div class="v" style="max-width: {width-2}px;">
                         {#if column === "progress"}
-                            {(itemsProgression[item.id]?.progress || 0) / (itemsProgression[item.id]?.total || 1) * 100}
-                            %
+                            <div style="height: 25px" class="progress">
+                                <ProgressBar total={itemsProgression[item.id]?.total || 1}
+                                             ranges={itemsProgression[item.id]?.ranges||[]}/>
+
+                                <div class="p">
+                                    {((itemsProgression[item.id]?.progress || 0) / (itemsProgression[item.id]?.total || 1) * 100).toFixed(2)}%
+                                </div>
+                            </div>
                         {:else if column === "size"}
                             {prettyBytes(itemsProgression[item.id]?.total || 0, {
                                 space: true,
@@ -181,5 +192,25 @@
 
     th:hover {
         background-color: rgba(30, 144, 255, 0.2);
+    }
+
+    .progress {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+
+    .progress > :global(canvas) {
+        width: 100%;
+        height: 100%;
+    }
+
+    .p {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
     }
 </style>

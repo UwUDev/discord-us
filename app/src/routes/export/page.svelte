@@ -71,6 +71,11 @@
         {#if item.user_password}
             <div class="form">
                 <div class="label">Encryption settings</div>
+
+                <div >
+                    <input type="checkbox" on:input={e => password =  e.target.checked ? item.password : undefined}/> Export with
+                    password
+                </div>
             </div>
         {/if}
 

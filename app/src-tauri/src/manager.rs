@@ -7,7 +7,7 @@ use tauri::{AppHandle, State};
 use discord_us::common::ResumableFileUpload;
 use discord_us::uploader::{FileUploadArguments, FileUploader, ResumableUploader, Uploader};
 use discord_us::signal::{PartProgression, Signal};
-use crate::database::{_update_item, _get_option, Item, ItemStatus, Database, _get_items_with_status};
+use crate::database::{_update_item, _get_option, Item, ItemStatus, Database, _get_items_with_status, notify_item_updated};
 use crate::state::{AppInitializer, AppState, AppExit};
 
 pub struct UploadingItem {
@@ -172,6 +172,8 @@ impl Manager {
                 let database = database_guard.as_ref().unwrap();
 
                 _update_item(database, id, progress_data, resume_data, ItemStatus::DONE);
+
+                notify_item_updated(database, id, &app_handle);
             }
         });
 
