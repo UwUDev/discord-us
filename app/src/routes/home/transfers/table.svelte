@@ -5,11 +5,71 @@
     import {settings} from "../../../settings";
     import Resizable from "../../../components/resizable/resizable.svelte";
 
-    import { Columns, displayColumnsSelector } from "./columns"
+    import {Columns, displayColumnsSelector} from "./columns"
+    import {onDestroy, onMount} from "svelte";
+    import {listen} from "@tauri-apps/api/event";
+    import prettyBytes from 'pretty-bytes';
+
 
     $: filter = $settings.filter || undefined;
 
-    $: items = invoke("get_items", { filter })
+    $: get_items = invoke("get_items", {filter})
+
+    let items: any[] = [];
+
+    $: {
+        if (get_items) {
+            get_items.then((res: any[]) => {
+                items = res;
+            })
+        }
+    }
+
+    let itemsProgression = {};
+
+    $: {
+        for (let k of Object.keys(itemsProgression)) {
+            if (items.find((item) => item.id === k)) {
+                itemsProgression[k] = undefined;
+                delete itemsProgression[k];
+            }
+        }
+
+        for (const i of items) {
+            console.log(i);
+            if (!i.progression_data || itemsProgression[i.id])
+                continue;
+
+            const data = JSON.parse(i.progression_data);
+
+            itemsProgression[i.id] = {
+                id: i.id,
+                progress: data.progress,
+                total: data.total,
+                ranges: data.ranges
+            }
+        }
+    }
+
+    let unlistenFn: Promise<() => void>[] = [];
+
+    onMount(() => {
+        unlistenFn.push(listen<any>('push_item', (e) => {
+            console.log(e)
+            items.push(e.payload);
+        }));
+
+        unlistenFn.push(listen<{ id: number; progress: number; total: number; ranges: [number, number][] }>('upload_progress', (e) => {
+            console.log(e);
+            itemsProgression[e.payload.id] = e.payload;
+            console.log(itemsProgression);
+        }));
+    });
+
+    onDestroy(() => {
+        unlistenFn.forEach(async f => (await f)?.());
+    })
+
 </script>
 
 <table>
@@ -39,8 +99,36 @@
         {/each}
     </tr>
     </thead>
-</table>
 
+    <tbody>
+    {#each items as item}
+        <tr>
+            {#each $settings.transfers.columns as [column, width]}
+                <td style="max-width: {width}px;">
+                    <div class="v" style="max-width: {width-2}px;">
+                        {#if column === "progress"}
+                            {(itemsProgression[item.id]?.progress || 0) / (itemsProgression[item.id]?.total || 1) * 100}
+                            %
+                        {:else if column === "size"}
+                            {prettyBytes(itemsProgression[item.id]?.total || 0, {
+                                space: true,
+                                binary: true
+                            })}
+                        {:else if column === "uploaded"}
+                            {prettyBytes(itemsProgression[item.id]?.progress || 0, {
+                                space: true,
+                                binary: true
+                            })}
+                        {:else}
+                            {item[column]}
+                        {/if}
+                    </div>
+                </td>
+            {/each}
+        </tr>
+    {/each}
+    </tbody>
+</table>
 <style>
     .sort {
         position: absolute;
@@ -62,6 +150,17 @@
         font-weight: normal;
         color: #000;
     }
+
+    td {
+        padding-right: 2px;
+    }
+
+    .v {
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+
 
     th:first-child {
         border-left: none;

@@ -16,7 +16,7 @@ const Settings = {
         columns: [
             ["name", 140],
             ["size", 80],
-        ],
+        ] as [string, number][],
         sort: ["name", "asc"]
     },
 

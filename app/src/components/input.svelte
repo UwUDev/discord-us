@@ -48,13 +48,23 @@
         align-items: center;
     }
 
-    .b > :global(input) {
+    .b > :global(input), .b > :global(select) {
         width: 100%;
         height: 100%;
         border: none;
         outline: none;
         background: transparent;
         caret-color: black;
+    }
+
+    :global(.b:has(select)) {
+        transition: all .1s;
+        border: 1px solid transparent !important;
+    }
+
+    :global(.b:hover:has(select)) {
+        border: 1px solid rgba(30, 144, 255, 1)  !important;
+        background-color: rgba(30, 144, 255, 0.1) !important;
     }
 
     .b > :global(input[type=number]::-webkit-inner-spin-button),
@@ -69,7 +79,7 @@
         border: 2.5px solid red !important;
     }
 
-    .d:has( input:focus) {
+    .d:has(input:focus) {
         border-bottom: 1px solid rgba(30, 144, 255, 1);
     }
 

@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{Write};
 use serde::{Deserialize, Serialize};
 use hex_buffer_serde::{Hex as _, HexForm};
+use crate::common::Subscription::Free;
 
 pub trait FileWritable {
     fn write_to_file(&self, file_path: String);
@@ -66,12 +67,24 @@ impl Subscription {
     }
 }
 
+impl From<&str> for Subscription {
+    fn from(value: &str) -> Self {
+        match value {
+            "Free" => Subscription::Free,
+            "Basic" => Subscription::Basic,
+            "Classic" => Subscription::Classic,
+            "Boost" => Subscription::Boost,
+            _ => Subscription::Free,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ResumableFileUpload {
     pub(crate) file_path: String,
     pub(crate) file_size: u64,
 
-    pub(crate) container_size: u32,
+    pub container_size: u32,
     pub(crate) remaining_indexes: Vec<u32>,
     pub(crate) containers: Vec<Container>,
 

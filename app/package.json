@@ -19,6 +19,7 @@
     "@tsconfig/svelte": "^5.0.0",
     "deepmerge": "^4.3.1",
     "i": "^0.3.7",
+    "pretty-bytes": "^6.1.1",
     "query-string": "^8.1.0",
     "svelte": "^4.0.5",
     "svelte-check": "^3.4.6",

@@ -1,10 +1,14 @@
-use std::fs;
+use std::fmt::Debug;
+use std::rc::Rc;
 use tauri::{command, AppHandle, Manager, State, Window};
 use tauri::api::dialog::{FileDialogBuilder};
 use std::path::Path;
 use serde::{Serialize, Deserialize};
+use crate::manager::{UploadStatus, UploadingItem};
 use crate::state::AppState;
-
+use crate::database::{ItemStatus, _get_option, _get_item};
+use rand::{distributions::Alphanumeric, Rng};
+use discord_us::common::Subscription;
 
 #[command]
 pub async fn handle_file_drop(app_handle: AppHandle, path: String) {
@@ -48,7 +52,7 @@ pub async fn open_window(app_handle: AppHandle, url: String, title: String, labe
         .center()
         .build();
 
-    if let (w) = window {
+    if let Ok(w) = window {
         // window created!
     }
 }
@@ -77,11 +81,105 @@ pub struct UploadFilePayload {
     thread_count: u32,
 
     password: Option<String>,
+
+    container_size: Option<u32>,
+}
+
+
+pub fn create_random_password(length: usize) -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(length)
+        .map(char::from)
+        .collect()
 }
 
 #[command]
-pub fn upload_file(window: Window, payload: UploadFilePayload) {
+pub fn upload_file(app_handle: AppHandle, payload: UploadFilePayload) -> Result<(), String> {
     // we need to register the file
     // in database
     // then call a "resume function" on download manager
+
+    let state: State<'_, AppState> = app_handle.state();
+
+    let mut database_guard = state.database.lock().unwrap();
+
+    let mut database = database_guard.as_mut().unwrap();
+
+    let mut container_size: u32;
+
+    if let Some(account_container_size) = _get_option(&database, &"account_type".into()) {
+        let subscription: Subscription = account_container_size.as_str().into();
+        container_size = subscription.get_max_chunk_upload_size() as u32;
+    } else {
+        // return Err
+        return Err("No subscription found".into());
+    }
+
+    if let Some(payload_container_size) = &payload.container_size {
+        if *payload_container_size > container_size {
+            // return Err
+            return Err("Container size is too big".into());
+        }
+        container_size = *payload_container_size;
+    }
+
+    let mut stmt = database.connection
+        .prepare("INSERT INTO items (name, status, password, user_password, thread_count,file_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+        .unwrap();
+
+    let mut params_values: Vec<rusqlite::types::Value> = Vec::with_capacity(6);
+
+    let user_password = payload.password.is_some();
+
+    params_values.push(payload.file_path.clone().into());
+    params_values.push(ItemStatus::UPLOADING.to_code().into());
+    params_values.push(payload.password.or_else(|| Some(create_random_password(16))).unwrap().into());
+    params_values.push(user_password.into());
+    params_values.push(payload.thread_count.into());
+    params_values.push(payload.file_path.into());
+
+    let id = stmt.insert(rusqlite::params_from_iter(params_values)).unwrap();
+
+    drop(stmt);
+
+    let item = _get_item(&database, id as i32).unwrap();
+
+    app_handle.emit_all("push_item", item.clone()).unwrap();
+
+    let mut token: String;
+    let mut channel_id: u64;
+
+    if let Some(token_option) = _get_option(&database, &"upload_token".into()) {
+        token = token_option;
+    } else {
+        return Err("No discord token found".into());
+    }
+
+    if let Some(channel_id_option) = _get_option(&database, &"channel_id".into()).map(|v| v.parse::<u64>().unwrap()) {
+        channel_id = channel_id_option;
+    } else {
+        return Err("No discord channel id found".into());
+    }
+
+    drop(database_guard);
+
+    let mut manager_guard = state.manager.lock().unwrap();
+    let mut manager = manager_guard.as_mut().unwrap();
+
+    let uploading_item = UploadingItem::from_item(
+        item,
+        &token,
+        channel_id,
+        Some(container_size),
+    );
+
+
+    let id = manager.register_uploading_item(uploading_item).unwrap();
+
+    if let Err(err) = manager.resume_upload(id, &app_handle) {
+        return Err(err.into());
+    }
+
+    Ok(())
 }

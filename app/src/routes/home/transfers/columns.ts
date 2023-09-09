@@ -10,7 +10,8 @@ export const Columns = {
     status: "Status",
     down_speed: "Down speed",
     up_speed: "Up speed",
-    eta: "Eta"
+    eta: "Eta",
+    uploaded: "Uploaded"
 }
 
 Object.keys(Columns).forEach((key) => {

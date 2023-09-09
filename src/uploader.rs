@@ -3,7 +3,8 @@ use std::collections::VecDeque;
 use std::marker::Send;
 use std::fs::{File, metadata};
 use std::io::{Read, Seek, SeekFrom};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
+use std::thread::JoinHandle;
 use aes::{Aes256};
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Cbc};
@@ -43,6 +44,7 @@ const CHUNK_SIZE: u32 = 1 << 16;
 
 const METADATA_SIZE: usize = 64;
 
+#[derive(Clone)]
 pub struct FileUploader {
     file_path: String,
     file_size: u64,
@@ -54,6 +56,8 @@ pub struct FileUploader {
     containers: Arc<Mutex<Vec<Container>>>,
 
     pool: Arc<ThreadPool>,
+
+    running: Arc<RwLock<bool>>,
 }
 
 impl FileUploader {
@@ -79,6 +83,8 @@ impl FileUploader {
             containers: Arc::new(Mutex::new(Vec::new())),
             current_downloading_indexes: Arc::new(Mutex::new(Vec::new())),
             pool: Arc::new(ThreadPool::new(threads_count as usize)),
+
+            running: Default::default(),
         }
     }
 
@@ -100,7 +106,7 @@ impl FileUploader {
         let mut hasher = Sha256::new();
         // hash file
         let mut file = File::open(file_path).unwrap();
-        let mut buffer = [0u8; 1024 * 1024];
+        let mut buffer = [0u8; 1 << 16];
         loop {
             let bytes_read = file.read(&mut buffer).unwrap();
             if bytes_read == 0 {
@@ -131,19 +137,40 @@ impl FileUploader {
 
         chunk_count
     }
-}
 
-impl Clone for FileUploader {
-    fn clone(&self) -> Self {
-        FileUploader {
-            file_path: self.file_path.clone(),
-            file_size: self.file_size,
-            container_size: self.container_size,
-            remaining_container_indexes: Arc::clone(&self.remaining_container_indexes),
-            containers: Arc::clone(&self.containers),
-            current_downloading_indexes: Arc::clone(&self.current_downloading_indexes),
-            pool: Arc::clone(&self.pool),
-        }
+    pub fn get_uploaded_ranges(&self) -> Vec<ProgressionRange<u64>> {
+        self.containers.lock().unwrap().iter().map(|container| {
+            let chunk_count_before = container.bytes_range[0] / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
+
+            let c_start = container.bytes_range[0] + (chunk_count_before * METADATA_SIZE as u64);
+
+            let chunk_count = (container.bytes_range[1] - container.bytes_range[0]) / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
+            let mut c_end = container.bytes_range[1] + chunk_count * METADATA_SIZE as u64;
+
+            if c_end % (CHUNK_SIZE as u64) > 0 {
+                c_end += (CHUNK_SIZE as u64) - c_end % (CHUNK_SIZE as u64); // add extra padding
+            }
+
+            ProgressionRange::of(c_start, c_end)
+        }).collect()
+    }
+
+    pub fn get_total_upload_size(&self) -> u64 {
+        self.compute_chunk_count() as u64 * CHUNK_SIZE as u64
+    }
+
+    pub fn get_thread_pool(&self) -> Arc<ThreadPool> {
+        self.pool.clone()
+    }
+
+    pub fn set_running(&self, running: bool) {
+        let mut lock = self.running.write().unwrap();
+
+        *lock = running;
+    }
+
+    pub fn get_running_state (&self) -> Arc<RwLock<bool>> {
+        self.running.clone()
     }
 }
 
@@ -183,6 +210,7 @@ impl FileUploadArguments {
     }
 }
 
+
 impl Uploader<FileUploadArguments, u64> for FileUploader {
     /// Upload the file using the arguments
     /// Returning the number of bytes uploaded
@@ -190,16 +218,15 @@ impl Uploader<FileUploadArguments, u64> for FileUploader {
     fn upload(&mut self, arguments: FileUploadArguments) -> u64 {
         // if we come from a resume session, we can already populate the signal
         if let Some(mut signal) = arguments.signal.clone() {
-            for container in self.containers.lock().unwrap().iter() {
-                let chunk_count_before = container.bytes_range[0] / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
-
-                let c_start = container.bytes_range[0] + (chunk_count_before * CHUNK_SIZE as u64);
-
-                let chunk_count = (container.bytes_range[1] - container.bytes_range[0]) / (CHUNK_SIZE as u64 - METADATA_SIZE as u64);
-                let c_end = container.bytes_range[1] + chunk_count * METADATA_SIZE as u64;
-
-                signal.report_data(ProgressionRange::of(c_start, c_end));
+            for range in self.get_uploaded_ranges().iter() {
+                signal.report_data(range.clone());
             }
+        }
+
+        {
+            let mut lock = self.running.write().unwrap();
+
+            *lock = true;
         }
 
         for _ in 0..self.pool.max_count() {
@@ -212,6 +239,7 @@ impl Uploader<FileUploadArguments, u64> for FileUploader {
                 self.file_size,
                 self.containers.clone(),
                 self.current_downloading_indexes.clone(),
+                self.running.clone()
             );
 
             self.pool.execute(move || {
@@ -303,6 +331,7 @@ impl ResumableUploader<ResumableFileUpload> for FileUploader {
             current_downloading_indexes: Arc::new(Mutex::new(Vec::new())),
             containers: Arc::new(Mutex::new(resume_session.containers.clone())),
             pool: Arc::new(ThreadPool::new(resume_session.thread_count)),
+            running: Default::default(),
         };
 
         Ok(file_uploader)
@@ -322,6 +351,8 @@ struct FileThreadedUploader {
 
     containers: Arc<Mutex<Vec<Container>>>,
     current_downloading_indexes: Arc<Mutex<Vec<u32>>>,
+
+    running: Arc<RwLock<bool>>,
 }
 
 unsafe impl Send for FileThreadedUploader {}
@@ -334,6 +365,7 @@ impl FileThreadedUploader {
            file_size: u64,
            containers: Arc<Mutex<Vec<Container>>>,
            current_downloading_indexes: Arc<Mutex<Vec<u32>>>,
+           running: Arc<RwLock<bool>>,
     ) -> FileThreadedUploader {
         FileThreadedUploader {
             container_size,
@@ -344,6 +376,7 @@ impl FileThreadedUploader {
             client: create_client(),
             containers,
             current_downloading_indexes,
+            running,
         }
     }
 
@@ -353,17 +386,27 @@ impl FileThreadedUploader {
 
             //println!("Uploading Container {:?}", container_index);
 
-            let container = self.upload(container_index);
+            if let Ok(container) = self.upload(container_index) {
+                self.add_container(container);
 
-            self.add_container(container);
+                self.remove_current_downloading_index(container_index);
+            }
 
-            self.remove_current_downloading_index(container_index);
+            if !self.is_running() {
+                break;
+            }
         }
 
         return;
     }
 
-    fn upload(&mut self, container_index: u32) -> Container {
+    fn is_running (&self) -> bool {
+        let lock = self.running.read().unwrap();
+
+        *lock
+    }
+
+    fn upload(&mut self, container_index: u32) -> Result<Container, ()> {
         let filename = "data.enc".to_string();
 
         let mut salt = [0u8; 16];
@@ -415,35 +458,39 @@ impl FileThreadedUploader {
             self.file_path.clone(),
             cursor,
             report_signal,
+            self.running.clone(),
         );
 
         let body = Body::sized(file_uploader, remaining_size);
 
 
-        self.client.put(upload_url)
+        match self.client.put(upload_url)
             .header("accept-encoding", "gzip")
             .header("connection", "Keep-Alive")
             .header("content-length", remaining_size)
             .header("content-type", "application/x-x509-ca-cert")
             .header("host", "discord-attachments-uploads-prd.storage.googleapis.com")
             .header("user-agent", "Discord-Android/192013;RNA")
-            .body(body).send().unwrap();
+            .body(body).send() {
+            Ok(_) => {
+                let storage_url = self.post_message(filename.clone(), upload_filename);
 
-        let storage_url = self.post_message(filename.clone(), upload_filename);
+                //println!("Computing byte range end (cursor: {:?}, remaining_size: {:?}, file_size {:?}, metadata size: {:?})", cursor, remaining_size, self.file_size, (remaining_size / CHUNK_SIZE as u64) * METADATA_SIZE as u64);
+                let byte_range_end = min(self.file_size, cursor as u64 + remaining_size - ((remaining_size / CHUNK_SIZE as u64) * METADATA_SIZE as u64));
 
-        //println!("Computing byte range end (cursor: {:?}, remaining_size: {:?}, file_size {:?}, metadata size: {:?})", cursor, remaining_size, self.file_size, (remaining_size / CHUNK_SIZE as u64) * METADATA_SIZE as u64);
-        let byte_range_end = min(self.file_size, cursor as u64 + remaining_size - ((remaining_size / CHUNK_SIZE as u64) * METADATA_SIZE as u64));
-
-        return Container {
-            storage_url,
-            chunk_count: remaining_size / CHUNK_SIZE as u64,
-            chunk_size: CHUNK_SIZE as u64,
-            salt,
-            bytes_range: [
-                cursor as u64,
-                byte_range_end
-            ],
-        };
+                Ok(Container {
+                    storage_url,
+                    chunk_count: remaining_size / CHUNK_SIZE as u64,
+                    chunk_size: CHUNK_SIZE as u64,
+                    salt,
+                    bytes_range: [
+                        cursor as u64,
+                        byte_range_end
+                    ],
+                })
+            },
+            Err(_) => return Err(())
+        }
     }
 
     fn get_processing_container_index(&mut self) -> Option<u32> {
@@ -549,6 +596,8 @@ struct CustomBody {
     buffer: Vec<u8>,
 
     signal: Option<Box<dyn ReportSignal<u64>>>,
+
+    running: Arc<RwLock<bool>>,
 }
 
 unsafe impl Send for CustomBody {}
@@ -599,13 +648,13 @@ impl CustomBody {
         self.remaining_size -= CHUNK_SIZE as i64;
     }
 
-    pub fn new(key: [u8; 32], remaining_size: i64, file_path: String, cursor: i64, signal: Option<Box<dyn ReportSignal<u64>>>) -> CustomBody {
+    pub fn new(key: [u8; 32], remaining_size: i64, file_path: String, cursor: i64, signal: Option<Box<dyn ReportSignal<u64>>>, running: Arc<RwLock<bool>>) -> CustomBody {
         let mut file = File::open(file_path.clone()).unwrap();
         //println!("Seeking to {:?}", cursor);
 
         file.seek(SeekFrom::Current(cursor)).unwrap();
 
-        CustomBody { key, remaining_size, file, buffer: vec![0; CHUNK_SIZE as usize], buffer_cursor: CHUNK_SIZE as usize, signal }
+        CustomBody { key, remaining_size, file, buffer: vec![0; CHUNK_SIZE as usize], buffer_cursor: CHUNK_SIZE as usize, signal, running }
     }
 }
 
@@ -632,6 +681,16 @@ impl Read for CustomBody {
                     break;
                 } else {
                     //println!("Read loop: doing_one_chunk");
+
+                    // before "processing next chunk", check if we are still allowed to run
+                    {
+                        let state = self.running.read().unwrap();
+                        if !*state {
+                            // println!("Detected stop state, aborting upload");
+                            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload aborted"));
+                        }
+                    }
+
                     self.do_one_chunk();
                     self.buffer_cursor = 0;
                 }

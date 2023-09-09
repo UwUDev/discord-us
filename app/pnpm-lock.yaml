@@ -25,6 +25,9 @@ devDependencies:
   i:
     specifier: ^0.3.7
     version: 0.3.7
+  pretty-bytes:
+    specifier: ^6.1.1
+    version: 6.1.1
   query-string:
     specifier: ^8.1.0
     version: 8.1.0
@@ -891,6 +894,11 @@ packages:
       nanoid: 3.3.6
       picocolors: 1.0.0
       source-map-js: 1.0.2
+    dev: true
+
+  /pretty-bytes@6.1.1:
+    resolution: {integrity: sha512-mQUvGU6aUFQ+rNvTIAcZuWGRT9a6f6Yrg9bHs4ImKF+HZCEK+plBvnAZYSIQztknZF2qnzNtr6F8s0+IuptdlQ==}
+    engines: {node: ^14.13.1 || >=16.0.0}
     dev: true
 
   /query-string@8.1.0:

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="files.db" uuid="5bd4f714-ba8d-4ee6-99e2-529046fcc536">
+    <data-source source="LOCAL" name="db.sqlite" uuid="dc7f166c-cfdc-4dbb-b2ae-4b5f92558e1a">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/files.db</jdbc-url>
+      <jdbc-url>jdbc:sqlite:C:\Users\marti\AppData\Roaming\com.quoi.feur\db.sqlite</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>

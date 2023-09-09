@@ -7,9 +7,9 @@ mod database;
 mod commands;
 mod manager;
 
-use tauri::{Manager, State, command};
+use tauri::{Manager, State, command, RunEvent};
 use crate::database::{Database, get_items, get_options, set_options, get_option};
-use crate::state::{AppState, AppInitializer, WindowManager};
+use crate::state::{AppState, AppExit, AppInitializer, WindowManager};
 use crate::settings::{get_settings, save_settings, Settings};
 use crate::commands::{handle_file_drop, open_window, pick_file, upload_file};
 
@@ -21,6 +21,8 @@ fn main() {
             database: Default::default(),
 
             window_manager: WindowManager::new(),
+
+            manager: Default::default(),
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -47,8 +49,24 @@ fn main() {
 
             *state.database.lock().unwrap() = Some(Database::init(&handle));
 
+            *state.manager.lock().unwrap() = Some(crate::manager::Manager::init(&handle));
+
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error building app")
+        .run(|app_handle, event| match event {
+            RunEvent::ExitRequested { api, .. } => {
+                println!("exit requested");
+
+                let state: State<AppState> = app_handle.state();
+
+                let mut manager = state.manager.lock().unwrap();
+
+                manager.as_mut().unwrap().exit(app_handle);
+            }
+            _ => {
+               // println!("event {:?}", event);
+            }
+        });
 }

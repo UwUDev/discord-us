@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use crate::settings::{Settings};
 use crate::database::{Database};
+use crate::manager::{Manager};
 use tauri::{AppHandle};
 
 
@@ -14,6 +15,8 @@ pub struct AppState {
     pub database: Mutex<Option<Database>>,
 
     pub window_manager: WindowManager,
+
+    pub manager: Mutex<Option<Manager>>,
 }
 
 pub struct WindowManager {
@@ -48,4 +51,8 @@ impl AppDirectory for AppHandle {
 
 pub trait AppInitializer {
     fn init(app_handle: &AppHandle) -> Self;
+}
+
+pub trait AppExit {
+    fn exit(&mut self, app_handle: &AppHandle);
 }

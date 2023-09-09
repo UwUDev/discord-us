@@ -10,10 +10,12 @@
     const edit = getContext<Writable<any>>('edit');
 
     onMount(() => {
-        options = invoke('get_options', {options: ["upload_token", "channel_id"]}).then((v) => ({
+        options = invoke('get_options', {options: ["upload_token", "channel_id", "account_type"]}).then((v) => ({
             upload_token: v[0],
-            channel_id: v[1]
+            channel_id: v[1],
+            account_type: v[2]
         })).then(x => {
+            console.log('rx',x)
             return x;
         });
     })
@@ -45,14 +47,26 @@
 
                 <div class="value">
                     <span>Discord token: </span>
-                    <Input hide value={$edit['upload_token'] || o['upload_token']} on:input={(e) => set_v('upload_token', e.target.value)}
+                    <Input hide value={$edit['upload_token'] || o['upload_token'] || ''} on:input={(e) => set_v('upload_token', e.target.value)}
                            placeholder="Token"/>
                 </div>
 
                 <div class="value">
                     <span>Channel id: </span>
-                    <Input value={$edit['channel_id'] || o['channel_id']} on:input={(e) => set_v('channel_id', e.target.value)} placeholder="Channel id"/>
+                    <Input value={$edit['channel_id'] || o['channel_id']||''} on:input={(e) => set_v('channel_id', e.target.value)} placeholder="Channel id"/>
                 </div>
+
+                <div class="value">
+                    <span>Account type: </span>
+                    <Input>
+                    <select slot="input" on:change={(e) => set_v('account_type', e.target.value)}>
+                        {#each ["","Free", "Basic", "Classic", "Boost"] as v}
+                            <option value={v} selected={$edit['account_type'] === v || o['account_type'] === v}>{v}</option>
+                        {/each}
+                    </select>
+                    </Input>
+                </div>
+
 
             </div>
 

@@ -1,5 +1,5 @@
 use std::sync::{Mutex, MutexGuard};
-use rusqlite::{Connection, Transaction, vtab::array};
+use rusqlite::{Connection, Error, Transaction, vtab::array};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, command};
 use crate::state::{AppInitializer, AppDirectory, AppState};
@@ -79,7 +79,7 @@ impl Versionned for Database {
                     );
 
                     CREATE TABLE items (
-                        id INT PRIMARY KEY,
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name TEXT NOT NULL,
                         status INT NOT NULL,
 
@@ -107,7 +107,7 @@ impl Versionned for Database {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub enum ItemStatus {
     DOWNLOADING,
     UPLOADING,
@@ -115,7 +115,7 @@ pub enum ItemStatus {
 }
 
 impl ItemStatus {
-    fn to_code(&self) -> i32 {
+    pub fn to_code(&self) -> i32 {
         match self {
             ItemStatus::DOWNLOADING => 0,
             ItemStatus::UPLOADING => 1,
@@ -123,7 +123,7 @@ impl ItemStatus {
         }
     }
 
-    fn from_code(value: i32) -> ItemStatus {
+    pub fn from_code(value: i32) -> ItemStatus {
         match value {
             0 => ItemStatus::DOWNLOADING,
             1 => ItemStatus::UPLOADING,
@@ -133,7 +133,7 @@ impl ItemStatus {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Item {
     pub id: i32,
     pub name: String,
@@ -153,25 +153,47 @@ pub fn get_items(state: State<'_, AppState>, filter: Option<&str>) -> Vec<Item> 
 
     let mut database = database.as_mut().unwrap();
 
-    let mut stmt = database.connection.prepare("SELECT id, name, status, progression_data, password, user_password, thread_count,file_path FROM items WHERE name = coalesce(?, name)").unwrap();
+    let mut stmt = database.connection.prepare("SELECT * FROM items WHERE name = coalesce(?, name)").unwrap();
 
-    let items = stmt.query_map([filter], |row| {
-        Ok(Item {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            status: ItemStatus::from_code(row.get(2)?),
-            resume_data: None,
-            progression_data: row.get(3)?,
-            password: row.get(4)?,
-            user_password: row.get(5)?,
-            thread_count: row.get(6)?,
-            file_path: row.get(7)?,
-        })
-    }).unwrap().map(|item| item.unwrap()).collect();
+    let items = stmt.query_map([filter], |row| import_row_as_item(row)).unwrap().map(|item| item.unwrap()).collect();
 
     println!("Items (filter={:?}): {:?}", filter, items);
 
     items
+}
+
+fn import_row_as_item(row: &rusqlite::Row) -> Result<Item, Error> {
+    Ok(Item {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        status: ItemStatus::from_code(row.get(2)?),
+        resume_data: row.get(4)?,
+        progression_data: row.get(5)?,
+        password: row.get(7)?,
+        user_password: row.get(6)?,
+        thread_count: row.get(8)?,
+        file_path: row.get(9)?,
+    })
+}
+
+pub fn _get_item(database: &Database, id: i32) -> Result<Item, Error> {
+    let mut stmt = database.connection.prepare("SELECT * FROM items WHERE id = ?").unwrap();
+
+    stmt.query_row([id], |row| import_row_as_item(row))
+}
+
+pub fn _get_items_with_status(database: &Database, status: ItemStatus) -> Result<Vec<Item>, Error> {
+    let mut stmt = database.connection.prepare("SELECT * FROM items WHERE status = ?").unwrap();
+
+    stmt.query_map([status.to_code()], |row| import_row_as_item(row))
+        .map(|rows| rows.map(|i| i.unwrap()))
+        .map(|rows| rows.collect())
+}
+
+pub fn _update_item(database: &Database, id: i32, progression_data: Option<String>, resume_data: Option<String>, status: ItemStatus) {
+    let mut stmt = database.connection.prepare("UPDATE items SET progression_data = ?, resume_data = ?, status = ? WHERE id = ?").unwrap();
+
+    stmt.execute(rusqlite::params![progression_data, resume_data, status.to_code(), id]).unwrap();
 }
 
 #[command]

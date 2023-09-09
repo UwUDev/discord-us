@@ -718,6 +718,7 @@ name = "discord-unlimited-storage-app"
 version = "0.1.0"
 dependencies = [
  "discord-us",
+ "rand 0.8.5",
  "rusqlite",
  "serde",
  "serde_json",
