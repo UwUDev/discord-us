@@ -8,7 +8,8 @@ use crate::manager::{UploadStatus, UploadingItem};
 use crate::state::AppState;
 use crate::database::{ItemStatus, _get_option, _get_item};
 use rand::{distributions::Alphanumeric, Rng};
-use discord_us::common::Subscription;
+use discord_us::common::{ResumableFileUpload, Subscription, Waterfall, FileWritable};
+use discord_us::uploader::{WaterfallExporter};
 
 #[command]
 pub async fn handle_file_drop(app_handle: AppHandle, path: String) {
@@ -68,6 +69,18 @@ pub fn pick_file(window: Window, cb: String) {
     println!("Pick file {:?} => {:?}", window.label(), cb);
 
     FileDialogBuilder::default().pick_file(move |path| match path {
+        Some(p) => {
+            window.emit("file-picked", PickFileResponse { callback: cb, path: p.to_str().unwrap().to_string() }).unwrap();
+        }
+        _ => {}
+    })
+}
+
+#[command]
+pub fn save_file_picker(window: Window, cb: String, extensions: Vec<&str>) {
+    println!("Pick file {:?} => {:?}", window.label(), cb);
+
+    FileDialogBuilder::default().add_filter("extensions", &extensions).save_file(move |path| match path {
         Some(p) => {
             window.emit("file-picked", PickFileResponse { callback: cb, path: p.to_str().unwrap().to_string() }).unwrap();
         }
@@ -182,4 +195,33 @@ pub fn upload_file(app_handle: AppHandle, payload: UploadFilePayload) -> Result<
     }
 
     Ok(())
+}
+
+#[command]
+pub fn export_waterfall(app_handle: AppHandle, item_id: i32, waterfall_path: String, password: Option<String>) -> Result<(), &'static str> {
+    let app_state: State<'_, AppState> = app_handle.state();
+
+    let database_guard = app_state.database.lock().unwrap();
+    let database = database_guard.as_ref().unwrap();
+    println!("Fetching {}", item_id);
+    if let Ok(item) = _get_item(database, item_id) {
+        println!("Exporting item {}", item.id);
+        if item.status.to_code() != ItemStatus::DONE.to_code() || item.resume_data.is_none() {
+            return Err("Item is not uploaded");
+        }
+
+        if let Ok(resume_session) = serde_json::from_str::<ResumableFileUpload>(&item.resume_data.unwrap()) {
+
+            let mut waterfall = match password {
+                Some(p) => resume_session.export_waterfall_with_password(p),
+                None => resume_session.export_waterfall()
+            };
+            println!("write_to_file {}", waterfall_path);
+            waterfall.write_to_file(waterfall_path);
+
+            return Ok(());
+        }
+    }
+
+    Err("Cannot save waterfall")
 }

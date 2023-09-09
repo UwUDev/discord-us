@@ -3,6 +3,7 @@
     import Home from "./routes/home/page.svelte"
     import Upload from "./routes/upload/page.svelte"
     import Options from "./routes/options/page.svelte"
+    import Export from "./routes/export/page.svelte"
     import {settingsLoaded} from "./settings"
     import { params } from "./params"
 
@@ -21,6 +22,10 @@
 
         <Route path="options">
             <Options />
+        </Route>
+
+        <Route path="export">
+            <Export />
         </Route>
     </Router>
 {/if}

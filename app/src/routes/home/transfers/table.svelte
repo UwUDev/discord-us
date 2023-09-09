@@ -10,6 +10,8 @@
     import {listen} from "@tauri-apps/api/event";
     import prettyBytes from 'pretty-bytes';
 
+    import {openActionContextMenu, selectedItems} from "./actions"
+
 
     $: filter = $settings.filter || undefined;
 
@@ -102,7 +104,17 @@
 
     <tbody>
     {#each items as item}
-        <tr>
+        <tr on:click={() => {
+            $selectedItems = [item.id];
+        }} on:contextmenu|preventDefault={(e) => {
+            if(!$selectedItems.includes(item.id))
+                $selectedItems = [item.id];
+
+            openActionContextMenu({
+                x: e.clientX,
+                y: e.clientY
+            });
+        }}>
             {#each $settings.transfers.columns as [column, width]}
                 <td style="max-width: {width}px;">
                     <div class="v" style="max-width: {width-2}px;">

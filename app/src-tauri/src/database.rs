@@ -157,7 +157,7 @@ pub fn get_items(state: State<'_, AppState>, filter: Option<&str>) -> Vec<Item> 
 
     let items = stmt.query_map([filter], |row| import_row_as_item(row)).unwrap().map(|item| item.unwrap()).collect();
 
-    println!("Items (filter={:?}): {:?}", filter, items);
+    //println!("Items (filter={:?}): {:?}", filter, items);
 
     items
 }
@@ -174,6 +174,17 @@ fn import_row_as_item(row: &rusqlite::Row) -> Result<Item, Error> {
         thread_count: row.get(8)?,
         file_path: row.get(9)?,
     })
+}
+
+#[command]
+pub fn get_item(state: State<'_, AppState>, id: i32) -> Result<Item, String> {
+    let database = state.database.lock().unwrap();
+
+    let database = database.as_ref().unwrap();
+
+    println!("Get item {}", id);
+
+    _get_item(&database, id).map_err(|e| e.to_string())
 }
 
 pub fn _get_item(database: &Database, id: i32) -> Result<Item, Error> {

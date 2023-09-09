@@ -28,8 +28,21 @@ pub trait Uploader<T, R>
 }
 
 pub trait WaterfallExporter {
-    fn export_waterfall(&self) -> Waterfall;
+    fn export_waterfall(&self) -> Waterfall {
+        self.export_waterfall_with_password(String::new())
+    }
     fn export_waterfall_with_password(&self, password: String) -> Waterfall;
+}
+
+impl WaterfallExporter for ResumableFileUpload {
+    fn export_waterfall_with_password(&self, password: String) -> Waterfall {
+        Waterfall {
+            containers: self.containers.clone(),
+            password: password.clone(),
+            filename: self.file_path.clone(),
+            size: self.file_size,
+        }
+    }
 }
 
 pub trait ResumableUploader<T>
@@ -169,7 +182,7 @@ impl FileUploader {
         *lock = running;
     }
 
-    pub fn get_running_state (&self) -> Arc<RwLock<bool>> {
+    pub fn get_running_state(&self) -> Arc<RwLock<bool>> {
         self.running.clone()
     }
 }
@@ -239,7 +252,7 @@ impl Uploader<FileUploadArguments, u64> for FileUploader {
                 self.file_size,
                 self.containers.clone(),
                 self.current_downloading_indexes.clone(),
-                self.running.clone()
+                self.running.clone(),
             );
 
             self.pool.execute(move || {
@@ -256,11 +269,6 @@ impl Uploader<FileUploadArguments, u64> for FileUploader {
 }
 
 impl WaterfallExporter for FileUploader {
-    fn export_waterfall(&self) -> Waterfall {
-        self.export_waterfall_with_password(String::new())
-    }
-
-
     fn export_waterfall_with_password(&self, password: String) -> Waterfall {
         let containers = self.containers.lock().unwrap().clone();
 
@@ -400,7 +408,7 @@ impl FileThreadedUploader {
         return;
     }
 
-    fn is_running (&self) -> bool {
+    fn is_running(&self) -> bool {
         let lock = self.running.read().unwrap();
 
         *lock
@@ -488,7 +496,7 @@ impl FileThreadedUploader {
                         byte_range_end
                     ],
                 })
-            },
+            }
             Err(_) => return Err(())
         }
     }
