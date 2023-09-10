@@ -235,6 +235,15 @@ impl Manager {
         }
     }
 
+    pub fn pause_upload(&mut self, database: &mut Database, id: &i32) -> Result<(), &'static str> {
+        let item = self.uploads.remove(&id);
+
+        match item {
+            Some(item) => Self::_pause_upload(database, id, &item),
+            None => Err("Item not found")
+        }
+    }
+
     fn save_all(&mut self, database: &mut Database) {
         // save all current uploading sessions
         println!("Saving {} items", self.uploads.len());

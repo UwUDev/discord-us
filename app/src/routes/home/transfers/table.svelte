@@ -6,7 +6,7 @@
     import Resizable from "../../../components/resizable/resizable.svelte";
     import ProgressBar from "../../../components/progressbar.svelte"
 
-    import {Columns, displayColumnsSelector} from "./columns"
+    import {Columns, ColumnsSort, displayColumnsSelector} from "./columns"
     import {onDestroy, onMount} from "svelte";
     import {listen} from "@tauri-apps/api/event";
     import prettyBytes from 'pretty-bytes';
@@ -62,11 +62,20 @@
             if (index !== -1) {
                 items[index] = e.payload;
             } else {
-                items.push(e.payload);
+                items = [...items, e.payload];
             }
         }));
 
-        unlistenFn.push(listen<{ id: number; progress: number; total: number; ranges: [number, number][] }>('upload_progress', (e) => {
+        unlistenFn.push(listen<any>('remove_item', (e) => {
+            items = items.filter((item) => item.id !== e.payload);
+        }));
+
+        unlistenFn.push(listen<{
+            id: number;
+            progress: number;
+            total: number;
+            ranges: [number, number][]
+        }>('upload_progress', (e) => {
             console.log(e);
             itemsProgression[e.payload.id] = e.payload;
             console.log(itemsProgression);
@@ -75,23 +84,96 @@
 
     onDestroy(() => {
         unlistenFn.forEach(async f => (await f)?.());
-    })
+    });
+
+    let drag = undefined;
+    let dragStartX = undefined;
+    let dragDeltaX = 0;
+    let dragStart = false;
+    $: dragColIndex = drag && $settings.transfers.columns.findIndex(x => x[0] === drag);
+    $: dragStartV = dragColIndex >= 0 && $settings.transfers.columns.slice(0, dragColIndex).reduce((prev, v) => prev + v[1] + 2, 0);
+    $: computedDragPosition = dragStartV + dragDeltaX;
+    $: dragWidth = dragColIndex >= 0 && $settings.transfers.columns[dragColIndex][1] + 2;
+
+    let itemAbove;
+
+    $: {
+        let acc = 0, i = 0;
+        for (let [c, w] of $settings.transfers.columns) {
+            let end = acc + w + 2;
+
+            if (computedDragPosition > acc && computedDragPosition < end && c !== drag) {
+                itemAbove = i;
+                break;
+            }
+
+            acc = end;
+            i++;
+        }
+    }
+
+    $: sort = ColumnsSort[$settings.transfers.sort[0]] ?? ColumnsSort.default($settings.transfers.sort[0]);
+    let sortedItems = [];
+    $: {
+        if (items) {
+            let a = items.sort(sort).slice();
+            sortedItems = $settings.transfers.sort[1] === "asc" ? a : a.reverse();
+        }
+    }
+
 
 </script>
 
+<svelte:window on:mousemove={(e) => {
+    if(drag) {
+        dragDeltaX = e.clientX - dragStartX;
+
+        if(Math.abs(dragDeltaX) > 5) {
+            dragStart = true;
+        }
+    }
+}} on:mouseup={() => {
+    if(dragStart && itemAbove>=0) {
+        // swap dragColIndex and itemAbove
+        let tmp = $settings.transfers.columns[dragColIndex];
+        $settings.transfers.columns[dragColIndex] = $settings.transfers.columns[itemAbove];
+        $settings.transfers.columns[itemAbove] = tmp;
+    }
+
+    drag= undefined;
+    dragStart = false;
+    itemAbove = undefined;
+}} />
+
+{#if dragColIndex >= 0 && dragStart}
+    <div style="width: {dragWidth}px; height: 22px; left: {computedDragPosition}px"
+         class="drag">
+        {Columns[drag]}
+    </div>
+{/if}
+
 <table>
     <thead>
-    <tr on:contextmenu|preventDefault={(e) => {
+    <tr on:contextmenu={(e) => {
           displayColumnsSelector({ x: e.clientX, y: e.clientY}, $settings.transfers.columns);
     }}>
-        {#each $settings.transfers.columns as [column, width]}
-            <th style="width: {width}px;" on:mouseup={() => {
+        {#each $settings.transfers.columns as [column, width],i}
+            {@const is_above =dragStart && i === itemAbove}
+
+            <th style="width: {width}px;" class:above={is_above} on:mousedown={(e) => {
+                drag = column;
+                dragStartX = e.clientX;
+                dragDeltaX = 0;
+            }} on:mouseup={(e) => {
+                if(dragStart || e.button == 2) {
+                    return;
+                }
                 if($settings.transfers.sort[0] !== column) {
                     $settings.transfers.sort = [column, "asc"];
                 } else {
                     $settings.transfers.sort[1] = $settings.transfers.sort[1] === "asc" ? "desc" : "asc";
                 }
-            }}>
+            }} class:dr={true}>
                 <Resizable limits={[30, 1500]} bind:width={width} height="20px" resize_cords={["right"]}>
                     {#if $settings.transfers.sort[0] === column}
                         <div class="sort">
@@ -108,11 +190,48 @@
     </thead>
 
     <tbody>
-    {#each items as item}
-        <tr on:click={() => {
-            $selectedItems = [item.id];
-        }} on:contextmenu|preventDefault={(e) => {
-            if(!$selectedItems.includes(item.id))
+    {#each sortedItems as item, i}
+        {@const selected = $selectedItems.includes(item.id)}
+
+        <tr class="item" on:click|stopPropagation={(e) => {
+            console.log(e, e.ctrlKey)
+            if (e.ctrlKey) {
+                if(!selected) {
+                    $selectedItems= [...$selectedItems, item.id];
+                } else {
+                    $selectedItems = $selectedItems.filter((i) => i !== item.id);
+                }
+            } else if (e.shiftKey && $selectedItems.length > 0) {
+                let lastClicked = sortedItems.findIndex(item => item.id === $selectedItems[$selectedItems.length - 1]);
+                let index = i;
+                if (index > lastClicked) {
+                    let tmp = lastClicked;
+                    lastClicked = index;
+                    index = tmp;
+                }
+
+                let push = [];
+                let remove = [];
+                for(let j = index; j <= lastClicked; j++) {
+                    if(!$selectedItems.includes(sortedItems[j].id))
+                        push.push(sortedItems[j].id);
+                    else {
+                        remove.push(sortedItems[j].id);
+                    }
+                };
+
+                if (push.length === 0) {
+                    // remove all items bet
+                    $selectedItems = $selectedItems.filter((x) => !remove.includes(x));
+                } else {
+                    $selectedItems = [...$selectedItems, ...push]
+                }
+
+            } else {
+                $selectedItems = [item.id];
+            }
+        }} class:selected on:contextmenu|preventDefault={(e) => {
+            if(!selected)
                 $selectedItems = [item.id];
 
             openActionContextMenu({
@@ -129,7 +248,8 @@
                                              ranges={itemsProgression[item.id]?.ranges||[]}/>
 
                                 <div class="p">
-                                    {((itemsProgression[item.id]?.progress || 0) / (itemsProgression[item.id]?.total || 1) * 100).toFixed(2)}%
+                                    {((itemsProgression[item.id]?.progress || 0) / (itemsProgression[item.id]?.total || 1) * 100).toFixed(2)}
+                                    %
                                 </div>
                             </div>
                         {:else if column === "size"}
@@ -213,4 +333,31 @@
         transform: translate(-50%, -50%);
         color: #fff;
     }
+
+    .drag {
+        position: absolute;
+        background-color: rgba(30, 144, 255, 0.5);
+    }
+
+    table {
+        border-collapse: collapse;
+    }
+
+    .item {
+        border: 1px dashed transparent;
+    }
+
+    .selected {
+        background-color: rgba(30, 144, 255, 0.2);
+        border: 1px dashed black;
+    }
+
+    .item:has(+ .selected) {
+        border-bottom: none;
+    }
+
+    .above {
+        background-color: rgba(30, 144, 255, 0.5);
+    }
+
 </style>

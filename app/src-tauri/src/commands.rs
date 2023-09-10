@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::{Serialize, Deserialize};
 use crate::manager::{UploadStatus, UploadingItem};
 use crate::state::AppState;
-use crate::database::{ItemStatus, _get_option, _get_item};
+use crate::database::{ItemStatus, _get_option, _get_item, _delete_item};
 use rand::{distributions::Alphanumeric, Rng};
 use discord_us::common::{ResumableFileUpload, Subscription, Waterfall, FileWritable};
 use discord_us::uploader::{WaterfallExporter};
@@ -211,7 +211,6 @@ pub fn export_waterfall(app_handle: AppHandle, item_id: i32, waterfall_path: Str
         }
 
         if let Ok(resume_session) = serde_json::from_str::<ResumableFileUpload>(&item.resume_data.unwrap()) {
-
             let mut waterfall = match password {
                 Some(p) => resume_session.export_waterfall_with_password(p),
                 None => resume_session.export_waterfall()
@@ -224,4 +223,34 @@ pub fn export_waterfall(app_handle: AppHandle, item_id: i32, waterfall_path: Str
     }
 
     Err("Cannot save waterfall")
+}
+
+#[command]
+pub fn delete_items(app_handle: AppHandle, items: Vec<i32>) {
+    let app_state: State<'_, AppState> = app_handle.state();
+
+    let mut database_guard = app_state.database.lock().unwrap();
+    let mut database = database_guard.as_mut().unwrap();
+
+    for item_id in items {
+        if let Ok(item) = _get_item(database, item_id) {
+            if item.status.to_code() == ItemStatus::UPLOADING.to_code() {
+                let mut manager_guard = app_state.manager.lock().unwrap();
+                let mut manager = manager_guard.as_mut().unwrap();
+
+                match manager.pause_upload(database, &item_id) {
+                    Ok(_) => {
+
+                    },
+                    Err(err) => {
+                        println!("Error while pausing upload: {}", err);
+                    }
+                }
+            }
+
+            _delete_item(database, item_id);
+            app_handle.emit_all("remove_item", item_id).unwrap();
+        }
+    }
+
 }

@@ -1,10 +1,10 @@
 use std::sync::{Mutex, MutexGuard};
-use rusqlite::{Connection, Error, Transaction, vtab::array};
+use rusqlite::{Connection, Error, params, Transaction, vtab::array};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, command};
 use crate::state::{AppInitializer, AppDirectory, AppState};
 
-const DB_VERSION: u32 = 2;
+const DB_VERSION: u32 = 3;
 
 pub struct Database {
     pub connection: Connection,
@@ -99,6 +99,13 @@ impl Versionned for Database {
                     ALTER TABLE items ADD COLUMN file_path TEXT DEFAULT NULL;
                     "
                 ).unwrap()
+            },
+            3 => {
+                tx.execute_batch(
+                    "
+                    ALTER TABLE items ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL;
+                    "
+                ).unwrap()
             }
             _ => {}
         }
@@ -153,11 +160,18 @@ pub fn get_items(state: State<'_, AppState>, filter: Option<&str>) -> Vec<Item> 
 
     let mut database = database.as_mut().unwrap();
 
-    let mut stmt = database.connection.prepare("SELECT * FROM items WHERE name = coalesce(?, name)").unwrap();
+    let (query, params) = match filter {
+        Some(filter) => {
+           ( "SELECT * FROM items WHERE name LIKE '%' || ?1 || '%' AND deleted_at IS NULL", [filter].to_vec())
+        }
+        None => {
+            ("SELECT * FROM items WHERE deleted_at IS NULL", Vec::new())
+        }
+    };
 
-    let items = stmt.query_map([filter], |row| import_row_as_item(row)).unwrap().map(|item| item.unwrap()).collect();
+    let mut stmt = database.connection.prepare(query).unwrap();
+    let items = stmt.query_map(rusqlite::params_from_iter(params), |row| import_row_as_item(row)).unwrap().map(|item| item.unwrap()).collect();
 
-    //println!("Items (filter={:?}): {:?}", filter, items);
 
     items
 }
@@ -194,7 +208,7 @@ pub fn _get_item(database: &Database, id: i32) -> Result<Item, Error> {
 }
 
 pub fn _get_items_with_status(database: &Database, status: ItemStatus) -> Result<Vec<Item>, Error> {
-    let mut stmt = database.connection.prepare("SELECT * FROM items WHERE status = ?").unwrap();
+    let mut stmt = database.connection.prepare("SELECT * FROM items WHERE status = ? AND deleted_at IS NULL").unwrap();
 
     stmt.query_map([status.to_code()], |row| import_row_as_item(row))
         .map(|rows| rows.map(|i| i.unwrap()))
@@ -213,6 +227,12 @@ pub fn notify_item_updated(database: &Database, id: i32, app_handle: &AppHandle)
     if let Ok(item) = _get_item(database, id) {
         app_handle.emit_all("push_item", item).unwrap();
     }
+}
+
+pub fn _delete_item(database: &Database, id: i32) {
+    let mut stmt = database.connection.prepare("UPDATE items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?").unwrap();
+
+    stmt.execute(rusqlite::params![id]).unwrap();
 }
 
 #[command]

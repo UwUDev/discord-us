@@ -11,7 +11,7 @@ use tauri::{Manager, State, command, RunEvent};
 use crate::database::{Database, get_items, get_item, get_options, set_options, get_option};
 use crate::state::{AppState, AppExit, AppInitializer, WindowManager};
 use crate::settings::{get_settings, save_settings, Settings};
-use crate::commands::{handle_file_drop, open_window, pick_file, upload_file,save_file_picker,export_waterfall};
+use crate::commands::{handle_file_drop, open_window, pick_file, upload_file,save_file_picker,export_waterfall, delete_items};
 
 
 fn main() {
@@ -39,7 +39,9 @@ fn main() {
             pick_file,
             upload_file,
             save_file_picker,
-            export_waterfall
+            export_waterfall,
+
+            delete_items
 
         ])
         .plugin(tauri_plugin_context_menu::init())

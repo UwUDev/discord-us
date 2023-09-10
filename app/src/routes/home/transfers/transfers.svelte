@@ -23,5 +23,6 @@
         height: 100%;
         border: 1px solid #000;
         margin-left: 1px;
+        position: relative;
     }
 </style>

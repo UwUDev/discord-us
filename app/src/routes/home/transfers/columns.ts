@@ -14,6 +14,10 @@ export const Columns = {
     uploaded: "Uploaded"
 }
 
+export const ColumnsSort = {
+    default: (col: string) => (item1, item2) => item1[col]  - item2[col],
+} as const;
+
 Object.keys(Columns).forEach((key) => {
     listen("toggle_column_" + key, () => {
         console.log("toggle_column_" + key);
