@@ -4,8 +4,6 @@ use std::io::{Read, Write};
 use aes::Aes256;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Cbc};
-use hmac::Hmac;
-use pbkdf2::pbkdf2;
 use reqwest::blocking::{Response};
 use reqwest::{StatusCode};
 use sha2::{Digest, Sha256};
@@ -112,7 +110,7 @@ pub struct ContainerDownloader {
 impl ContainerDownloader {
     fn hash_key(encryption_password: String, salt: [u8; 16]) -> [u8; 32] {
         let mut key = [0u8; 32];
-        pbkdf2::<Hmac<Sha256>>(encryption_password.as_bytes(), &salt, 10000, &mut key);
+        // unsafe ! pbkdf2::pbkdf2_hmac::<Sha256>(encryption_password.as_bytes(), &salt, 10000, &mut key);
         key
     }
 

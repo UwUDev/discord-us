@@ -9,7 +9,6 @@ use aes::{Aes256};
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Cbc};
 use hmac::Hmac;
-use pbkdf2::pbkdf2;
 use reqwest::blocking::{Body, Client};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -428,7 +427,7 @@ impl FileThreadedUploader {
         thread_rng().fill_bytes(&mut salt);
 
         let mut key = [0u8; 32];
-        pbkdf2::<Hmac<Sha256>>(self.arguments.encryption_password.as_bytes(), &salt, 10000, &mut key);
+        // unsafe! pbkdf2::pbkdf2_hmac::<Sha256>(self.arguments.encryption_password.as_bytes(), &salt, 10000, &mut key);
 
 
         //println!("Computing cursor chunks_per_container: {:?}", self.chunks_per_container());
