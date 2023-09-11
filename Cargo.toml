@@ -24,5 +24,6 @@ hex-buffer-serde = "0.4.0"
 sorted-vec = "0.8.2"
 dyn-clone = "1.0.13"
 dyn-clonable = "0.9.0"
+walkdir = "2"
 
 aes-gcm = { version = "0.10.2", features = ["aes"] }

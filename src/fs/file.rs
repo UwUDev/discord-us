@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
 };
 
-struct FileReadable {
+pub struct FileReadable {
     path: PathBuf,
     inner: File,
 }

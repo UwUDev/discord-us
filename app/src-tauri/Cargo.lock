@@ -788,6 +788,7 @@ dependencies = [
  "sha256",
  "sorted-vec",
  "threadpool",
+ "walkdir",
 ]
 
 [[package]]

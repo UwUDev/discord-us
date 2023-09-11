@@ -2,7 +2,7 @@ use std::ops::{Range};
 use crate::Size;
 
 pub trait Ranged {
-    fn get_range(&self) -> Range<u64>;
+    fn get_range(&self) -> &Range<u64>;
 }
 
 pub trait RangedSort {

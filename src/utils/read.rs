@@ -219,7 +219,7 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> MultiChunkedReader<R, C> 
 
             if range.contains(&self.cursor) {
                 self.chunk_readers_offset = i + 1;
-                return Some((reader.clone(), range));
+                return Some((reader.clone(), range.clone()));
             }
         }
         None
@@ -239,11 +239,6 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> Read for MultiChunkedRead
                     continue;
                 }
             }
-
-            // find next range
-            let range = self.current_stream.as_ref()
-                .map(|(range, stream)| range)
-                .unwrap_or_else(|| &self.range);
 
             let (next_reader, range) = self.find_next_reader().ok_or(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more readers"))?;
 
