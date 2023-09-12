@@ -160,6 +160,7 @@ impl<T: Add<Output=T> + Copy, S: AddSignalerDefault<T>> AddSignaler<T> for S {
 impl AddSignaler<Range<u64>> for StoredSignal<Vec<Range<u64>>> {
     fn add_signal(&mut self, t: Range<u64>) {
         self.data.push(t);
+        self.callback_manager.run_callback(&self.data);
     }
 }
 
@@ -192,19 +193,24 @@ impl StoredSignal<Vec<Range<u64>>> {
 
 #[cfg(test)]
 mod test {
-    use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal};
+    use std::ops::Range;
+    use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal, AddSignaler};
 
     #[test]
     pub fn test_s() {
-        let mut signal = StoredSignal::new(10);
+        let mut signal: StoredSignal<Vec<Range<u64>>> = StoredSignal::new(Vec::new());
 
         signal.on_signal(|x| {
-            println!("Signal: {}", x);
+            println!("Signal: {:?}", x);
         });
 
-        signal.signal(20);
-        signal.signal(30);
+        signal.add_signal(Range { start: 0, end: 10 });
+        signal.add_signal(Range { start: 5, end: 15 });
+        signal.add_signal(Range { start: 15, end: 30 });
+        signal.add_signal(Range { start: 50, end: 65 });
 
-        assert_eq!(*signal.get_signal_data(), 30);
+        signal.retrim_ranges();
+
+        println!("Signal (final) : {:?}", signal.get_signal_data());
     }
 }
