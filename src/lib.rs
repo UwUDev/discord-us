@@ -33,7 +33,7 @@ pub trait ZeroSubstract  {
 
 impl<T: Sub<Output = T> + PartialOrd + Default> ZeroSubstract for T {
     fn zero_substract(self, other: Self) -> Self {
-        if self < other {
+        if other > self {
             Self::default()
         } else {
             self - other
