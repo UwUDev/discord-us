@@ -9,7 +9,7 @@ use reqwest::{StatusCode};
 use sha2::{Digest, Sha256};
 use crate::common::{Container, Waterfall};
 use crate::http_client::create_client;
-use crate::signal::{ReportSignal, ProgressionRange, LinearPartSignal, PartProgression};
+use crate::_signal::{ReportSignal, ProgressionRange, LinearPartSignal, PartProgression};
 
 type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 

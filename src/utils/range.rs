@@ -5,6 +5,12 @@ pub trait Ranged {
     fn get_range(&self) -> &Range<u64>;
 }
 
+impl Ranged for Range<u64> {
+    fn get_range(&self) -> &Range<u64> {
+        self
+    }
+}
+
 pub trait RangedSort {
     fn sort_ranges(&mut self);
 }

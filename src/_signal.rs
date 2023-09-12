@@ -225,7 +225,7 @@ impl<T: Integer> LinearPartSignal<T> {
 // Test
 #[cfg(test)]
 mod tests {
-    use crate::signal::{PartProgression, Signal, ProgressionRange, ReportSignal, LinearPartSignal};
+    use crate::_signal::{PartProgression, Signal, ProgressionRange, ReportSignal, LinearPartSignal};
 
     #[test]
     fn test_ranges() {
