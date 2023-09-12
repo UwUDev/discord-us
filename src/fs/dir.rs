@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
     io::{Read, SeekFrom},
 };
+use std::io::Seek;
 use walkdir::WalkDir;
 use crate::{
     utils::{
@@ -19,7 +20,6 @@ use crate::{
         FsNode,
         IntoTree,
         Ref,
-        AsPathVec,
         AsPathRelative,
     },
 };
@@ -88,7 +88,9 @@ struct ChunkedFileReader {
 
 impl ChunkedFileReader {
     fn open(path: &PathBuf, pos: SeekFrom) -> Self {
-        let file = File::open(path).unwrap();
+        let mut file = File::open(path).unwrap();
+
+        file.seek(pos).unwrap();
 
         Self {
             file,
@@ -152,14 +154,14 @@ impl IntoTree<DirEntryNode, &Vec<String>> for &Vec<DirEntry> {
 mod test {
     use crate::{
         Size,
-        fs::{AsPathVec, FsNode, SerializedFsNode, dir::{
+        fs::{AsPathVec, SerializedFsNode, IntoTree, dir::{
             scan_files,
             ChunkedFileReader, DirEntry,
+            DirEntryNode,
         }},
         utils::{
             read::{
                 MultiChunkedStream,
-                LazyOpen,
                 RangeLazyOpen,
             }
         },
@@ -172,8 +174,6 @@ mod test {
     };
     use std::io::Write;
     use std::path::{PathBuf};
-    use crate::fs::{AsPathString, IntoTree};
-    use crate::fs::dir::DirEntryNode;
 
     #[test]
     pub fn test_scan() {

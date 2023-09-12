@@ -125,7 +125,7 @@ impl<T: Read> Read for OmitStream<T> {
         //#[cfg(test)]
         //println!("OmitStream::read : reading {} bytes", to_read);
 
-        let mut read = self.reader.read(&mut buf[..to_read])?;
+        let read = self.reader.read(&mut buf[..to_read])?;
 
         self.read += read as u64;
 
@@ -265,8 +265,6 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
                 }
             }
 
-            use crate::pack::Size;
-
             if self.cursor == self.range.end {
                 break;
             }
@@ -362,7 +360,7 @@ mod test2 {
 
     impl Chunked for TestChunked {
         fn process_next_chunk(&mut self) -> Option<Vec<u8>> {
-            let mut c = self.cursor;
+            let c = self.cursor;
             if c == self.stop {
                 return None;
             }

@@ -6,12 +6,9 @@ use std::{
     fmt::{Debug, Formatter},
 };
 use serde::{
-    ser::SerializeStruct,
     Serialize,
     Deserialize,
-    Deserializer,
     Serializer,
-    de::{DeserializeOwned},
 };
 
 pub mod dir;
@@ -79,7 +76,7 @@ impl<T: Clone + Serialize> From<FsNode<T>> for SerializedFsNode<T> {
 
 impl<T: Clone + Serialize> SerializedFsNode<T> {
     pub fn into_node(&self, parent: OptionalRef<FsNode<T>>) -> Ref<FsNode<T>> {
-        let mut node = FsNode::new(&self.name, parent);
+        let node = FsNode::new(&self.name, parent);
 
         let mut borrowed = node.borrow_mut();
 
