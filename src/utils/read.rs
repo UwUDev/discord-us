@@ -5,7 +5,7 @@ use std::{
     marker::PhantomData,
 };
 use std::cmp::max;
-use crate::Size;
+use crate::{Size, ZeroSubstract};
 use crate::utils::range::{Intersect, Ranged, RangedSort};
 
 /// Lazy Read is a Read that is only opened when needed
@@ -27,6 +27,10 @@ pub trait RangeLazyOpen<T>: LazyOpen<T> {
 /// Represent a Stream I/O Using chunked operation
 pub trait Chunked {
     fn process_next_chunk(&mut self) -> Option<Vec<u8>>;
+}
+
+pub trait ChunkSize {
+    fn get_chunk_size(&self) -> u64;
 }
 
 /// Allows to stream a Chunked object
@@ -124,58 +128,71 @@ impl<T: Read> Read for OmitStream<T> {
     }
 }
 
-pub struct ChunkedOmitStream<T: LazyOpen<R> + Size, R: Chunked> {
+pub struct ChunkedOmitStream<T: LazyOpen<R> + Size + ChunkSize, R: Chunked> {
     lazy_open: T,
-
-    chunk_size: u64,
 
     _phantom: PhantomData<R>,
 }
 
 
-impl<T: RangeLazyOpen<R> + Size, R: Chunked> LazyOpen<OmitStream<ChunkedRead<R>>> for ChunkedOmitStream<T, R> {
+impl<T: RangeLazyOpen<R> + Size + ChunkSize, R: Chunked> LazyOpen<OmitStream<ChunkedRead<R>>> for ChunkedOmitStream<T, R> {
     fn open(&self) -> OmitStream<ChunkedRead<R>> {
         let size = self.lazy_open.get_size();
         OmitStream::from(self.lazy_open.open().into(), 0, size)
     }
 }
 
-impl<T: RangeLazyOpen<R> + Size, R: Chunked> RangeLazyOpen<OmitStream<ChunkedRead<R>>> for ChunkedOmitStream<T, R> {
+impl<T: RangeLazyOpen<R> + Size + ChunkSize, R: Chunked> RangeLazyOpen<OmitStream<ChunkedRead<R>>> for ChunkedOmitStream<T, R> {
     fn open_with_range(&self, range: Range<u64>) -> OmitStream<ChunkedRead<R>> {
-        let chunk_start = range.start / self.chunk_size;
+        let chunk_size = self.lazy_open.get_chunk_size();
 
-        let chunk_end = (range.end + self.chunk_size - 1) / self.chunk_size;
+        let chunk_start = range.start / chunk_size;
 
-        let start = chunk_start * self.chunk_size;
-        let end = chunk_end * self.chunk_size;
+        let chunk_end = (range.end + chunk_size - 1) / chunk_size;
+
+        let start = chunk_start * chunk_size;
+        let end = chunk_end * chunk_size;
 
         let stream = ChunkedRead::from(self.lazy_open.open_with_range(start..end));
+
+        #[cfg(test)]
+        println!("ChunkedOmitStream::open_with_range : opening stream from {} to {} (real={}->{})", start, end, range.start, range.end);
 
         OmitStream::from(stream, range.start - start, range.end - start)
     }
 }
 
 #[derive(Clone)]
-pub struct MultiChunkedStream<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> {
+pub struct MultiChunkedStream<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> {
     chunk_readers: Vec<R>,
 
     _phantom: PhantomData<C>,
 }
 
-impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> Size for MultiChunkedStream<R, C> {
+impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> From<Vec<R>> for MultiChunkedStream<R, C> {
+    fn from(value: Vec<R>) -> Self {
+        Self {
+            chunk_readers: value,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+
+impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Size for MultiChunkedStream<R, C> {
     fn get_size(&self) -> u64 {
         self.chunk_readers.iter().map(|r| r.get_size()).sum()
     }
 }
 
-impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> LazyOpen<MultiChunkedReader<R, C>> for MultiChunkedStream<R, C> {
+impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> LazyOpen<MultiChunkedReader<R, C>> for MultiChunkedStream<R, C> {
     fn open(&self) -> MultiChunkedReader<R, C> {
         let size = self.get_size();
         self.open_with_range(Range { start: 0, end: size })
     }
 }
 
-impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> RangeLazyOpen<MultiChunkedReader<R, C>> for MultiChunkedStream<R, C> {
+impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> RangeLazyOpen<MultiChunkedReader<R, C>> for MultiChunkedStream<R, C> {
     fn open_with_range(&self, range: Range<u64>) -> MultiChunkedReader<R, C> {
         let mut sorted_chunk_readers = self.chunk_readers.clone();
 
@@ -196,7 +213,7 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> RangeLazyOpen<MultiChunke
     }
 }
 
-pub struct MultiChunkedReader<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> {
+pub struct MultiChunkedReader<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> {
     sorted_chunk_readers: Vec<R>,
 
     cursor: u64,
@@ -210,7 +227,7 @@ pub struct MultiChunkedReader<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> 
     _phantom: PhantomData<C>,
 }
 
-impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> MultiChunkedReader<R, C> {
+impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> MultiChunkedReader<R, C> {
     fn find_next_reader(&mut self) -> Option<(R, Range<u64>)> {
         for i in self.chunk_readers_offset..self.sorted_chunk_readers.len() {
             let reader = &self.sorted_chunk_readers[i];
@@ -226,7 +243,7 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> MultiChunkedReader<R, C> 
     }
 }
 
-impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> Read for MultiChunkedReader<R, C> {
+impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for MultiChunkedReader<R, C> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut read = 0;
 
@@ -242,14 +259,16 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone, C: Chunked> Read for MultiChunkedRead
 
             let (next_reader, range) = self.find_next_reader().ok_or(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more readers"))?;
 
-            let relative_start = max(0, self.range.start - range.start);
-            let relative_end = max(0, range.end - self.range.end);
+            let relative_start = self.range.start.zero_substract(range.start);
+            let relative_end = range.end.zero_substract(self.range.end);
 
             let omit_stream = ChunkedOmitStream {
                 lazy_open: next_reader,
-                chunk_size: 1024 * 1024 * 1024,
                 _phantom: PhantomData,
             };
+
+            #[cfg(test)]
+            println!("Find_next_reader : opening stream from {} to {} (real={}->{})", relative_start, range.end - relative_end, range.start, range.end);
 
             let read = omit_stream.open_with_range(relative_start..(range.end - relative_end));
 
@@ -311,7 +330,7 @@ mod test {
 #[cfg(test)]
 mod test2 {
     use std::ops::Range;
-    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkedRead, LazyOpen, RangeLazyOpen};
+    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkSize, LazyOpen, RangeLazyOpen};
     use crate::Size;
     use std::io::Read;
 
@@ -345,6 +364,12 @@ mod test2 {
         }
     }
 
+    impl ChunkSize for B {
+        fn get_chunk_size(&self) -> u64 {
+            10
+        }
+    }
+
     impl LazyOpen<TestChunked> for B {
         fn open(&self) -> TestChunked {
             TestChunked {
@@ -368,7 +393,6 @@ mod test2 {
     pub fn test() {
         let r = ChunkedOmitStream {
             lazy_open: B {},
-            chunk_size: 10,
             _phantom: Default::default(),
         };
 
