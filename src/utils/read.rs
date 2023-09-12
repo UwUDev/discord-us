@@ -115,6 +115,9 @@ impl<T: Read> Read for OmitStream<T> {
 
         let to_read = min((self.omit_after - self.read) as usize, buf.len());
 
+        //#[cfg(test)]
+        //println!("OmitStream::read : to_read = {}", to_read);
+
         if to_read <= 0 {
             return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more bytes to read"));
         }
@@ -158,7 +161,7 @@ impl<T: RangeLazyOpen<R> + Size + ChunkSize, R: Chunked> RangeLazyOpen<OmitStrea
         let stream = ChunkedRead::from(self.lazy_open.open_with_range(start..end));
 
         //#[cfg(test)]
-        //println!("ChunkedOmitStream::open_with_range : opening stream from {} to {} (real={}->{})", start, end, range.start, range.end);
+        //println!("ChunkedOmitStream::open_with_range : opening stream from {} to {} (omit={} stop={})", start, end, range.start - start, range.end - start);
 
         OmitStream::from(stream, range.start - start, range.end - start)
     }
@@ -203,8 +206,8 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> RangeLazyOpen
 
         MultiChunkedReader {
             sorted_chunk_readers,
+            cursor: range.start,
             range: range,
-            cursor: 0,
 
             current_stream: Default::default(),
 
@@ -251,7 +254,10 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
 
         while read < buf.len() {
             if let Some((range, stream)) = &mut self.current_stream {
-                if self.cursor < range.end {
+
+                let r = min(range.end, self.range.end);
+
+                if self.cursor < r {
                     let r = stream.read(&mut buf[read..])?; // -> copy into new buffer
                     self.cursor += r as u64;
                     read += r;
@@ -261,7 +267,7 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
 
             use crate::pack::Size;
 
-            if self.cursor == self.range.get_size() {
+            if self.cursor == self.range.end {
                 break;
             }
 

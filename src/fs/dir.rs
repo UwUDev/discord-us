@@ -15,12 +15,27 @@ use crate::{
             ChunkSize,
         },
     },
+    fs::{
+        FsNode,
+        IntoTree,
+        Ref,
+        AsPathVec,
+        AsPathRelative,
+    },
+};
+use serde::{
+    Serialize, Deserialize,
 };
 
 #[derive(Clone, Debug)]
 struct DirEntry {
     path: PathBuf,
 
+    range: Range<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct DirEntryNode {
     range: Range<u64>,
 }
 
@@ -115,57 +130,96 @@ impl RangeLazyOpen<ChunkedFileReader> for DirEntry {
     }
 }
 
+impl IntoTree<DirEntryNode, &Vec<String>> for &Vec<DirEntry> {
+    fn into_tree(&self, prefix: &Vec<String>) -> Ref<FsNode<DirEntryNode>> {
+        let root = FsNode::root();
+
+        for entry in self.iter() {
+            let path = entry.path.as_path_relative(prefix);
+
+            let node = root.borrow_mut().find_recursive_create(&path);
+
+            node.borrow_mut().set_data(DirEntryNode {
+                range: entry.range.clone(),
+            });
+        }
+
+        root
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{
         Size,
-        fs::dir::{
+        fs::{AsPathVec, FsNode, SerializedFsNode, dir::{
             scan_files,
             ChunkedFileReader, DirEntry,
-        },
+        }},
         utils::{
             read::{
                 MultiChunkedStream,
-                MultiChunkedReader,
                 LazyOpen,
+                RangeLazyOpen,
             }
         },
     };
     use std::{
         io::{
             Read
-        }
+        },
+        ops::{Range},
     };
     use std::io::Write;
+    use std::path::{PathBuf};
+    use crate::fs::{AsPathString, IntoTree};
+    use crate::fs::dir::DirEntryNode;
 
     #[test]
     pub fn test_scan() {
-        let files = scan_files(vec!["./src".into()]).unwrap();
+        let scan: PathBuf = "./src".into();
+
+        let files = scan_files(vec![scan.clone()]).unwrap();
 
         println!("Scanned {} files", files.len());
 
-        println!("{:?}", files);
+        let relative = scan.canonicalize().unwrap().as_path_vec();
+        println!("Relative: {:?}", relative);
+
+        // for file in files.iter() {
+        //   println!("Path {:?}", file.path.as_path_relative(&relative).as_path_string());
+        //}
+
+        let node = (&files).into_tree(&relative);
+
+        let node = (*node.borrow()).clone();
+
+        let str = serde_json::to_string(&node).unwrap();
+        println!("{}", str);
+
+        let node: SerializedFsNode<DirEntryNode> = serde_json::from_str(&str).unwrap();
+
+        println!("{:?}", node.into_node(None));
     }
 
     #[test]
     pub fn test_read() {
-        let files = scan_files(vec!["./src".into()]).unwrap();
+        let files = scan_files(vec!["./Cargo.toml".into(), "./README.md".into()]).unwrap();
 
-        let mut size = files.get_size();
-
-        println!("Size: {}", size);
+        let rg = Range { start: 0, end: files.get_size() };
+        let mut size = rg.end - rg.start;
 
         let stream: MultiChunkedStream<DirEntry, ChunkedFileReader> = files.into();
 
-        let mut r = stream.open();
+        let mut r = stream.open_with_range(rg);
 
         let mut buf = [0u8; 2048];
         let mut f = std::fs::File::create("test.txt").unwrap();
 
         while size > 0 {
             let read = r.read(&mut buf).unwrap();
-            //println!("Read {} bytes|r {}", read, size);
-            f.write(&buf[..read]);
+            println!("Read {} bytes|r {}", read, size);
+            f.write(&buf[..read]).unwrap();
             size -= read as u64;
         }
     }
