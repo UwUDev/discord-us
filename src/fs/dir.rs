@@ -87,8 +87,8 @@ impl Chunked for ChunkedFileReader {
 
         let read = self.file.read(&mut buf).unwrap();
 
-        #[cfg(test)]
-        println!("Processing next chunk for file (read={}) {:?}", read, self.file);
+        //#[cfg(test)]
+        //println!("Processing next chunk for file (read={}) {:?}", read, self.file);
 
         match read {
             0 => None,
@@ -136,6 +136,7 @@ mod test {
             Read
         }
     };
+    use std::io::Write;
 
     #[test]
     pub fn test_scan() {
@@ -159,10 +160,12 @@ mod test {
         let mut r = stream.open();
 
         let mut buf = [0u8; 2048];
+        let mut f = std::fs::File::create("test.txt").unwrap();
 
         while size > 0 {
             let read = r.read(&mut buf).unwrap();
-            println!("Read {} bytes|r {}", read, size);
+            //println!("Read {} bytes|r {}", read, size);
+            f.write(&buf[..read]);
             size -= read as u64;
         }
     }

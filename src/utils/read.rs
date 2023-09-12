@@ -4,7 +4,6 @@ use std::{
     ops::Range,
     marker::PhantomData,
 };
-use std::cmp::max;
 use crate::{Size, ZeroSubstract};
 use crate::utils::range::{Intersect, Ranged, RangedSort};
 
@@ -120,8 +119,8 @@ impl<T: Read> Read for OmitStream<T> {
             return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more bytes to read"));
         }
 
-        #[cfg(test)]
-        println!("OmitStream::read : reading {} bytes", to_read);
+        //#[cfg(test)]
+        //println!("OmitStream::read : reading {} bytes", to_read);
 
         let mut read = self.reader.read(&mut buf[..to_read])?;
 
@@ -158,8 +157,8 @@ impl<T: RangeLazyOpen<R> + Size + ChunkSize, R: Chunked> RangeLazyOpen<OmitStrea
 
         let stream = ChunkedRead::from(self.lazy_open.open_with_range(start..end));
 
-        #[cfg(test)]
-        println!("ChunkedOmitStream::open_with_range : opening stream from {} to {} (real={}->{})", start, end, range.start, range.end);
+        //#[cfg(test)]
+        //println!("ChunkedOmitStream::open_with_range : opening stream from {} to {} (real={}->{})", start, end, range.start, range.end);
 
         OmitStream::from(stream, range.start - start, range.end - start)
     }
@@ -260,12 +259,21 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
                 }
             }
 
+            use crate::pack::Size;
+
+            if self.cursor == self.range.get_size() {
+                break;
+            }
+
+            //#[cfg(test)]
+            //println!("Find_next_reader(before): cursor = {}, range = {:?}", self.cursor, self.range);
+
             let (next_reader, range) = self.find_next_reader().ok_or(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more readers"))?;
 
             let relative_start = self.range.start.zero_substract(range.start);
 
-            #[cfg(test)]
-            println!("Find_next_reader, min({}, {}) - {}", self.range.end, range.end, range.start);
+            //#[cfg(test)]
+            //println!("Find_next_reader, min({}, {}) - {}", self.range.end, range.end, range.start);
 
             let relative_end = min(self.range.end, range.end) - (range.start);
 
@@ -274,8 +282,8 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
                 _phantom: PhantomData,
             };
 
-            #[cfg(test)]
-            println!("Find_next_reader : opening stream from {} to {} (real={}->{})", relative_start, relative_end, range.start, range.end);
+            //#[cfg(test)]
+            //println!("Find_next_reader : opening stream from {} to {} (real={}->{})", relative_start, relative_end, range.start, range.end);
 
             let read = omit_stream.open_with_range(relative_start..relative_end);
 
