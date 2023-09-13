@@ -15,6 +15,10 @@ pub trait StaticSignal<T> {
     fn get_signal_data(&self) -> &T;
 }
 
+pub trait SignalValue<T> {
+    fn get_value(&self) -> T;
+}
+
 /// Dynamic signal is a signal that can be listened to
 /// It can be listened to by adding a callback
 pub trait DynamicSignal<T, F: Fn(&T) + Send + 'static> {
@@ -126,6 +130,12 @@ impl<T> StoredSignal<T> {
 impl<T> StaticSignal<T> for StoredSignal<T> {
     fn get_signal_data(&self) -> &T {
         &self.data
+    }
+}
+
+impl<T: Clone> SignalValue<T> for StoredSignal<T> {
+    fn get_value(&self) -> T {
+        self.data.clone()
     }
 }
 
