@@ -19,8 +19,6 @@ use std::{
 struct RateLimiterInner {
     tokens_per_second: u64,
     last_removal: Instant,
-
-    lock: Condvar,
 }
 
 #[derive(Clone)]
@@ -36,18 +34,20 @@ impl RateLimiter {
             inner: Arc::new(Mutex::new(RateLimiterInner {
                 tokens_per_second: tokens_per_second,
                 last_removal: last_removal,
-
-                lock: Condvar::new(),
             })),
         }
     }
 
-    pub fn remove_tokens(&mut self, count: u64) {
+    pub fn remove_tokens(&mut self, count: u64) -> Result<(), std::io::Error> {
         let mut guard = self.inner.lock().unwrap();
-        self._remove_tokens(&mut guard, count);
+        self._remove_tokens(&mut guard, count)
     }
 
-    fn _remove_tokens(&self, inner: &mut MutexGuard<'_, RateLimiterInner>, count: u64) {
+    fn _remove_tokens(&self, inner: &mut MutexGuard<'_, RateLimiterInner>, count: u64) -> Result<(), std::io::Error> {
+        if count > inner.tokens_per_second {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Cannot remove more tokens than the rate limiter allows"));
+        }
+
         // convert tokens into micros
         let micros = count * 1_000_000 / inner.tokens_per_second;
 
@@ -73,6 +73,8 @@ impl RateLimiter {
         } else {
             inner.last_removal = inner.last_removal + Duration::from_micros(micros);
         }
+
+        Ok(())
     }
 }
 
@@ -87,16 +89,16 @@ mod test {
 
     #[test]
     pub fn test_limiter() {
-        let mut l = RateLimiter::new(500);
+        let l = RateLimiter::new(2500);
 
         let now = Instant::now();
         let mut j: Vec<JoinHandle<()>> = Vec::new();
 
-        for i in 0..3 {
+        for i in 0..10 {
             let mut l = l.clone();
             let h = spawn(move || {
                 for x in 0..10 {
-                    l.remove_tokens(100);
+                    l.remove_tokens(100).unwrap();
                     println!("{}", (i * 10) + x);
                 }
             });
