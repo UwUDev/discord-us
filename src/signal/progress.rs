@@ -4,7 +4,6 @@ use crate::{
         bool::{SafeBoolSignal},
         StoredSignal,
         Signaler,
-        StaticSignal,
         SignalValue,
     },
     utils::{
