@@ -3,7 +3,6 @@
 use std::{
     sync::{
         Arc,
-        Condvar,
         Mutex,
         MutexGuard,
     },
@@ -26,6 +25,16 @@ pub struct RateLimiter {
     inner: Arc<Mutex<RateLimiterInner>>,
 }
 
+pub trait RateLimiterTrait {
+    /// Removes tokens from the rate limiter.
+    /// If the rate limiter is unable to remove the tokens, it will block the current thread until it can.
+    /// This method is thread safe.
+    ///
+    /// * `count` - The number of tokens to remove. This must be less than or equal to the number of tokens per second.
+    fn remove_tokens(&mut self, count: u64) -> Result<(), std::io::Error>;
+}
+
+/// A rate limiter that can be used to limit the number of operations per second.
 impl RateLimiter {
     pub fn new(tokens_per_second: u64) -> Self {
         let last_removal = Instant::now() /*- Duration::from_micros(1_000_000)*/;
@@ -36,11 +45,6 @@ impl RateLimiter {
                 last_removal: last_removal,
             })),
         }
-    }
-
-    pub fn remove_tokens(&mut self, count: u64) -> Result<(), std::io::Error> {
-        let mut guard = self.inner.lock().unwrap();
-        self._remove_tokens(&mut guard, count)
     }
 
     fn _remove_tokens(&self, inner: &mut MutexGuard<'_, RateLimiterInner>, count: u64) -> Result<(), std::io::Error> {
@@ -78,13 +82,28 @@ impl RateLimiter {
     }
 }
 
+impl RateLimiterTrait for RateLimiter {
+    fn remove_tokens(&mut self, count: u64) -> Result<(), std::io::Error> {
+        let mut guard = self.inner.lock().unwrap();
+        self._remove_tokens(&mut guard, count)
+    }
+}
+
+pub struct VoidRateLimiter {}
+
+impl RateLimiterTrait for VoidRateLimiter {
+    fn remove_tokens(&mut self, _count: u64) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::time::{Instant};
     use std::thread::{JoinHandle, spawn};
 
     use crate::utils::{
-        limit::{RateLimiter}
+        limit::{RateLimiter, RateLimiterTrait}
     };
 
     #[test]
