@@ -1,5 +1,6 @@
 pub mod range;
 pub mod bool;
+pub mod progress;
 
 use std::{
     ops::{

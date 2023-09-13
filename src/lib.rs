@@ -6,6 +6,7 @@ pub mod downloader;
 mod http_client;
 pub mod common;
 pub mod signal;
+pub mod upload;
 pub mod _signal;
 
 pub mod pack;
