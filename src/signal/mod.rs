@@ -6,7 +6,6 @@ use std::{
         Add,
     }
 };
-use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Static signal is a signal whose data can be accessed whenever you want
 /// It can be accessed by calling get_signal_data
@@ -162,49 +161,19 @@ impl<T: Add<Output=T> + Copy, S: AddSignalerDefault<T>> AddSignaler<T> for S {
     }
 }
 
-/// SafeSignal
-/// A thread safe signal
-pub struct SafeSignal<T: ?Sized> {
-    signal: Arc<Mutex<T>>,
-}
-
-impl<T> SafeSignal<T> {
-    /// Wrap a signal into a SafeSignal
-    ///
-    /// * `data` - The signal to wrap
-    pub fn wrap(data: T) -> Self {
-        Self {
-            signal: Arc::new(Mutex::new(data))
-        }
-    }
-
-    /// Access the signal
-    pub fn access_signal<'a>(&'a self) -> MutexGuard<'a, T> {
-        self.signal.lock().unwrap()
-    }
-}
-
-impl<T> Clone for SafeSignal<T> {
-    /// Clone the signal and keep the reference to it
-    fn clone(&self) -> Self {
-        Self {
-            signal: self.signal.clone()
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::{ops::Range, thread::spawn};
-    use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal, AddSignaler, SafeSignal};
+    use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal, AddSignaler};
+    use crate::utils::safe::Safe;
 
     #[test]
     pub fn test_s() {
         let signal: StoredSignal<Vec<Range<u64>>> = StoredSignal::new(Vec::new());
 
-        let signal = SafeSignal::wrap(signal);
+        let signal = Safe::wrap(signal);
 
-        signal.access_signal().on_signal(|x| {
+        signal.access().on_signal(|x| {
             println!("Signal: {:?}", x);
         });
 
@@ -212,25 +181,25 @@ mod test {
         let s2 = signal.clone();
 
         spawn(move || {
-            s2.access_signal().signal(vec![Range { start: 100, end: 110 }]);
+            s2.access().signal(vec![Range { start: 100, end: 110 }]);
         });
 
         let j = spawn(move || {
-            s.access_signal().add_signal(Range { start: 0, end: 10 });
-            s.access_signal().add_signal(Range { start: 0, end: 20 });
-            s.access_signal().add_signal(Range { start: 0, end: 30 });
-            s.access_signal().add_signal(Range { start: 0, end: 40 });
+            s.access().add_signal(Range { start: 0, end: 10 });
+            s.access().add_signal(Range { start: 0, end: 20 });
+            s.access().add_signal(Range { start: 0, end: 30 });
+            s.access().add_signal(Range { start: 0, end: 40 });
         });
 
 
-        signal.access_signal().retrim_ranges();
+        signal.access().retrim_ranges();
 
-        println!("Signal (final) : {:?}", signal.access_signal().get_signal_data());
+        println!("Signal (final) : {:?}", signal.access().get_signal_data());
 
         j.join().unwrap();
 
-        signal.access_signal().retrim_ranges();
+        signal.access().retrim_ranges();
 
-        println!("Signal (final2) : {:?}", signal.access_signal().get_signal_data());
+        println!("Signal (final2) : {:?}", signal.access().get_signal_data());
     }
 }
