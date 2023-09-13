@@ -1,17 +1,12 @@
 pub mod range;
+pub mod bool;
 
 use std::{
     ops::{
         Add,
-        Range,
     }
 };
-
-use crate::{
-    utils::{
-        range::{RangedSort, Ranged}
-    }
-};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Static signal is a signal whose data can be accessed whenever you want
 /// It can be accessed by calling get_signal_data
@@ -157,60 +152,75 @@ impl<T: Add<Output=T> + Copy, S: AddSignalerDefault<T>> AddSignaler<T> for S {
     }
 }
 
-impl AddSignaler<Range<u64>> for StoredSignal<Vec<Range<u64>>> {
-    fn add_signal(&mut self, t: Range<u64>) {
-        self.data.push(t);
-        self.callback_manager.run_callback(&self.data);
+/// SafeSignal
+/// A thread safe signal
+pub struct SafeSignal<T: ?Sized> {
+    signal: Arc<Mutex<T>>,
+}
+
+impl<T> SafeSignal<T> {
+    /// Wrap a signal into a SafeSignal
+    ///
+    /// * `data` - The signal to wrap
+    pub fn wrap(data: T) -> Self {
+        Self {
+            signal: Arc::new(Mutex::new(data))
+        }
+    }
+
+    /// Access the signal
+    pub fn access_signal<'a>(&'a self) -> MutexGuard<'a, T> {
+        self.signal.lock().unwrap()
     }
 }
 
-impl StoredSignal<Vec<Range<u64>>> {
-    /// Retrim the ranges
-    /// If there are two ranges that are next to each other, merge them
-    pub fn retrim_ranges(&mut self) {
-        let mut ranges = self.data.clone();
-
-        ranges.sort_ranges();
-
-        let mut new_ranges = Vec::new();
-
-        let mut current_range = ranges[0].clone();
-
-        for range in ranges.iter() {
-            if range.start <= current_range.end {
-                current_range.end = range.end;
-            } else {
-                new_ranges.push(current_range);
-                current_range = range.clone();
-            }
+impl<T> Clone for SafeSignal<T> {
+    /// Clone the signal and keep the reference to it
+    fn clone(&self) -> Self {
+        Self {
+            signal: self.signal.clone()
         }
-
-        new_ranges.push(current_range.clone());
-
-        self.data = new_ranges;
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::ops::Range;
-    use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal, AddSignaler};
+    use std::{ops::Range, thread::spawn};
+    use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal, AddSignaler, SafeSignal};
 
     #[test]
     pub fn test_s() {
-        let mut signal: StoredSignal<Vec<Range<u64>>> = StoredSignal::new(Vec::new());
+        let signal: StoredSignal<Vec<Range<u64>>> = StoredSignal::new(Vec::new());
 
-        signal.on_signal(|x| {
+        let signal = SafeSignal::wrap(signal);
+
+        signal.access_signal().on_signal(|x| {
             println!("Signal: {:?}", x);
         });
 
-        signal.add_signal(Range { start: 0, end: 10 });
-        signal.add_signal(Range { start: 5, end: 15 });
-        signal.add_signal(Range { start: 15, end: 30 });
-        signal.add_signal(Range { start: 50, end: 65 });
+        let s = signal.clone();
+        let s2 = signal.clone();
 
-        signal.retrim_ranges();
+        spawn(move || {
+            s2.access_signal().signal(vec![Range { start: 100, end: 110 }]);
+        });
 
-        println!("Signal (final) : {:?}", signal.get_signal_data());
+        let j = spawn(move || {
+            s.access_signal().add_signal(Range { start: 0, end: 10 });
+            s.access_signal().add_signal(Range { start: 0, end: 20 });
+            s.access_signal().add_signal(Range { start: 0, end: 30 });
+            s.access_signal().add_signal(Range { start: 0, end: 40 });
+        });
+
+
+        signal.access_signal().retrim_ranges();
+
+        println!("Signal (final) : {:?}", signal.access_signal().get_signal_data());
+
+        j.join().unwrap();
+
+        signal.access_signal().retrim_ranges();
+
+        println!("Signal (final2) : {:?}", signal.access_signal().get_signal_data());
     }
 }
