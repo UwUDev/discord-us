@@ -5,7 +5,13 @@ pub mod progress;
 use std::{
     ops::{
         Add,
-    }
+    },
+    rc::{
+        Rc,
+    },
+    cell::{
+        RefCell,
+    },
 };
 
 /// Static signal is a signal whose data can be accessed whenever you want
@@ -109,7 +115,7 @@ impl<T> Default for CallbackManager<T> {
 /// Stored signal
 /// A signal that can be listened to and whose data can be accessed
 /// It is a combination of StaticSignal and DynamicSignal
-struct StoredSignal<T> {
+pub struct StoredSignal<T> {
     data: T,
 
     callback_manager: CallbackManager<T>,
@@ -152,9 +158,7 @@ impl<T, F: Fn(&T) + Send + 'static> DynamicSignal<T, F> for StoredSignal<T> {
     }
 }
 
-trait AddSignalerDefault<T>: StaticSignal<T> + Signaler<T> {}
-
-impl<T: Add<Output=T> + Copy, S: AddSignalerDefault<T>> AddSignaler<T> for S {
+impl<T: Add<Output=T> + Copy, S: StaticSignal<T> + Signaler<T>> AddSignaler<T> for S {
     fn add_signal(&mut self, t: T) {
         let value = self.get_signal_data();
 
@@ -162,11 +166,25 @@ impl<T: Add<Output=T> + Copy, S: AddSignalerDefault<T>> AddSignaler<T> for S {
     }
 }
 
+pub struct DerivedSignal<T, D> {
+    data: D,
+    signal: Rc<RefCell<T>>,
+}
+
+impl <T, D> DerivedSignal<T, D>  {
+    pub fn new(data: D, signal: Rc<RefCell<T>>) -> Self {
+        Self {
+            data,
+            signal,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::{ops::Range, thread::spawn};
     use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal, AddSignaler};
-    use crate::utils::safe::Safe;
+    use crate::utils::safe::{Safe, SafeAccessor};
 
     #[test]
     pub fn test_s() {

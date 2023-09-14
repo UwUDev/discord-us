@@ -1,10 +1,16 @@
 use std::{
-    sync::{Arc, Mutex, MutexGuard}
+    sync::{Arc, Mutex, MutexGuard},
+    rc::{Rc},
+    cell::{RefCell},
 };
 
 /// A thread safe guard
 pub struct Safe<T: ?Sized> {
     guarded: Arc<Mutex<T>>,
+}
+
+pub trait SafeAccessor<T> {
+    fn access<'a>(&'a self) -> MutexGuard<'a, T>;
 }
 
 impl<T> Safe<T> {
@@ -17,8 +23,16 @@ impl<T> Safe<T> {
         }
     }
 
-    /// Access the value
-    pub fn access<'a>(&'a self) -> MutexGuard<'a, T> {
+}
+
+impl<T> Into<Rc<RefCell<T>>> for Safe<T>  {
+    fn into(self) -> Rc<RefCell<T>> {
+
+    }
+}
+
+impl <T> SafeAccessor<T> for Safe<T> {
+    fn access<'a>(&'a self) -> MutexGuard<'a, T> {
         self.guarded.lock().unwrap()
     }
 }
