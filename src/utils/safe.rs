@@ -25,12 +25,6 @@ impl<T> Safe<T> {
 
 }
 
-impl<T> Into<Rc<RefCell<T>>> for Safe<T>  {
-    fn into(self) -> Rc<RefCell<T>> {
-
-    }
-}
-
 impl <T> SafeAccessor<T> for Safe<T> {
     fn access<'a>(&'a self) -> MutexGuard<'a, T> {
         self.guarded.lock().unwrap()

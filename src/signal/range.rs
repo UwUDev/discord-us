@@ -1,12 +1,14 @@
 use crate::{
-    signal::{AddSignaler, StoredSignal},
-    utils::range::{RangedSort},
+    signal::{AddSignaler, StoredSignal,DerivedSignal, GetSignal},
+    utils::{range::{RangedSort}, safe::{Safe}},
 };
 
 use std::{
-    ops::{Range}
+    ops::{Range},
+    cell::RefCell,
+    rc::Rc
 };
-use crate::signal::DerivedSignal;
+use crate::utils::safe::SafeAccessor;
 
 impl AddSignaler<Range<u64>> for StoredSignal<Vec<Range<u64>>> {
     fn add_signal(&mut self, t: Range<u64>) {
@@ -53,16 +55,28 @@ impl StoredSignal<Vec<Range<u64>>> {
     }
 }
 
-impl<T: AddSignaler<Range<u64>>> AddSignaler<Range<u64>> for DerivedSignal<T, u64> {
+impl<T> DerivedSignal<T, u64>  {
+    fn convert_range(&self, t: &Range<u64>) -> Range<u64> {
+        Range { start: t.start + self.data, end: t.end + self.data }
+    }
+}
+
+impl<S: AddSignaler<Range<u64>>> AddSignaler<Range<u64>> for DerivedSignal<Rc<RefCell<S>>, u64> {
     fn add_signal(&mut self, t: Range<u64>) {
-        self.signal.borrow_mut().add_signal(Range { start: self.data + t.start, end: self.data + t.end });
+        self.signal.borrow_mut().add_signal(self.convert_range(&t));
+    }
+}
+
+impl<S: AddSignaler<Range<u64>>> AddSignaler<Range<u64>> for DerivedSignal<Safe<S>, u64> {
+    fn add_signal(&mut self, t: Range<u64>) {
+        self.signal.access().add_signal(self.convert_range(&t));
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{ops::Range,rc::Rc, cell::RefCell};
-    use crate::signal::{AddSignaler, DerivedSignal, StoredSignal, StaticSignal};
+    use std::{ops::Range, rc::Rc, cell::RefCell};
+    use crate::signal::{AddSignaler, DerivedSignal, StoredSignal, StaticSignal, GetSignal};
 
     #[test]
     pub fn test_range() {
@@ -76,6 +90,6 @@ mod test {
 
         r.add_signal(Range { start: 0, end: 10 });
 
-        println!("{:?}", rc.borrow().get_signal_data());
+        println!("{:?}", rc.borrow_mut().get_signal().get_signal_data());
     }
 }

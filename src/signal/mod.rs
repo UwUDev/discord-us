@@ -166,17 +166,33 @@ impl<T: Add<Output=T> + Copy, S: StaticSignal<T> + Signaler<T>> AddSignaler<T> f
     }
 }
 
-pub struct DerivedSignal<T, D> {
-    data: D,
-    signal: Rc<RefCell<T>>,
+pub trait GetSignal<T> {
+    fn get_signal(&mut self) -> &mut T;
 }
 
-impl <T, D> DerivedSignal<T, D>  {
-    pub fn new(data: D, signal: Rc<RefCell<T>>) -> Self {
+impl<T> GetSignal<StoredSignal<T>> for StoredSignal<T> {
+    fn get_signal(&mut self) -> &mut StoredSignal<T> {
+        self
+    }
+}
+
+pub struct DerivedSignal<T, D> {
+    data: D,
+    signal: T,
+}
+
+impl<T, D> DerivedSignal<T, D> {
+    pub fn new(data: D, signal: T) -> Self {
         Self {
             data,
             signal,
         }
+    }
+}
+
+impl<T: GetSignal<S>, S, D> GetSignal<S> for DerivedSignal<T, D> {
+    fn get_signal<'a>(&'a mut self) -> &'a mut S {
+        self.signal.get_signal()
     }
 }
 

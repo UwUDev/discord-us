@@ -73,9 +73,6 @@ impl<T: ProgressSignalAccessor<S>, S: AddSignaler<Range<u64>>> ProgressSignalTra
 }
 
 
-//impl ProgressSignalTrait<StoredSignal<Vec<Range<u64>>>> for ProgressSignal {}
-
-
 impl<T: Default> ProgressSignal<StoredSignal<T>> {
     pub fn new() -> ProgressSignal<StoredSignal<T>> {
         Self {
@@ -84,8 +81,59 @@ impl<T: Default> ProgressSignal<StoredSignal<T>> {
         }
     }
 
-    pub fn with_offset(&self, offset: u64) -> Self {
-        //let signal = DerivedSignal::new(offset, self.get_progression().into());
-        todo!()
+    pub fn clone_with_offset(&self, offset: u64) -> ProgressSignal<DerivedSignal<Safe<StoredSignal<T>>, u64>> {
+        let signal: DerivedSignal<Safe<StoredSignal<T>>, u64> = DerivedSignal::new(offset, self.progression.clone());
+
+        ProgressSignal {
+            progression: Safe::wrap(signal),
+            status: self.status.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{ops::Range, thread::{spawn, JoinHandle}};
+    use crate::signal::{GetSignal, progress::{ProgressSignal}, StoredSignal, DynamicSignal, AddSignaler, StaticSignal};
+    use crate::utils::safe::SafeAccessor;
+
+    #[test]
+    pub fn test_progress() {
+        let mut signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
+
+
+        signal.progression.access().get_signal().on_signal(|x| {
+            println!("Signal: {:?}", x);
+        });
+
+
+        signal.add_signal(0..10);
+
+        signal.add_signal(Range {
+            start: 10,
+            end: 20,
+        });
+
+        let mut j: Vec<JoinHandle<()>> = Vec::new();
+
+        for i in 1..10 {
+            let mut offset = signal.clone_with_offset(i * 100);
+            j.push(spawn(move || {
+                for i in 0..10 {
+                    offset.add_signal(Range {
+                        start: i * 10,
+                        end: (i + 1) * 10,
+                    });
+                }
+            }));
+        }
+
+        for a in j {
+            a.join().unwrap();
+        }
+
+        signal.progression.access().retrim_ranges();
+
+        println!("Signal (final) : {:?}", signal.progression.access().get_signal_data());
     }
 }
