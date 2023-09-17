@@ -141,7 +141,7 @@ impl RateLimiterTrait for VoidRateLimiter {
 pub enum CoolDown {
     Void(),
     RateLimiter(RateLimiter),
-    Work (Safe<WorkCoolDown>),
+    Work(Safe<WorkCoolDown>),
 }
 
 pub struct WorkCoolDown {
@@ -171,8 +171,8 @@ impl CoolDown {
         match self {
             CoolDown::RateLimiter(rate_limiter) => rate_limiter.remove_tokens(1.0).unwrap(),
             _ => {
-                sleep(Duration::from_micros(self.remaining_wait()))
-            },
+                sleep(Duration::from_millis(self.remaining_wait()))
+            }
         }
     }
 
@@ -181,19 +181,19 @@ impl CoolDown {
             CoolDown::Work(work) => {
                 let mut work = work.access();
                 work.is_working = true;
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
-    pub fn end_work(&mut self) {
+    pub fn end_work(&mut self, at: Instant) {
         match self {
             CoolDown::Work(work) => {
                 let mut work = work.access();
                 work.is_working = false;
-                work.ended = Instant::now();
-            },
-            _ => {},
+                work.ended = at;
+            }
+            _ => {}
         }
     }
 
@@ -203,23 +203,23 @@ impl CoolDown {
             CoolDown::RateLimiter(rate_limiter) => rate_limiter.compute_sleep_time(1.0, &mut rate_limiter.inner.lock().unwrap()),
             CoolDown::Work(work) => {
                 let work = work.access();
-                let elapsed = work.ended.elapsed().as_micros() as u64;
+                let elapsed = work.ended.elapsed().as_millis() as u64;
 
-                if elapsed > work.duration.as_micros() as u64 {
+                if elapsed > work.duration.as_millis() as u64 {
                     return 0;
                 }
 
-                return work.duration.as_micros() as u64 - elapsed;
-            },
+                return work.duration.as_millis() as u64 - elapsed;
+            }
         }
     }
-    
+
     pub fn is_working(&self) -> bool {
         match self {
             CoolDown::Work(work) => {
                 let work = work.access();
                 return work.is_working;
-            },
+            }
             _ => false,
         }
     }
@@ -233,7 +233,12 @@ pub trait CoolDownMs {
         return if self.get_cool_down() < 0.0 {
             CoolDown::Void()
         } else {
-            CoolDown::new(self.get_cool_down())
+            let duration = Duration::from_millis(self.get_cool_down() as u64);
+            CoolDown::Work(Safe::wrap(WorkCoolDown {
+                ended: Instant::now() - duration,
+                duration,
+                is_working: false,
+            }))
         };
     }
 }

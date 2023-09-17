@@ -20,6 +20,9 @@ use crate::{
     utils::{
         read::{
             StaticStream,
+        },
+        limit::{
+            CoolDownMs,
         }
     },
     Size,
@@ -37,6 +40,12 @@ pub struct BotUploader {
 impl UploaderMaxSize for BotUploader {
     fn get_max_size(&self) -> u64 {
         self.credentials.subscription.get_max_upload_size() as u64
+    }
+}
+
+impl CoolDownMs for BotUploader {
+    fn get_cool_down(&self) -> f64 {
+        return 5000.0;
     }
 }
 
@@ -71,7 +80,6 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
                 "filename": "data.bin",
             }]
         });
-
 
         let mut body = StaticStream::from(
             format!("--{}\r\nContent-Disposition: form-data; name=\"payload_json\"\r\nContent-Type: application/json\r\n\r\n", boundary.clone()).into()
