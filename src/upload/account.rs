@@ -117,7 +117,7 @@ impl AccountUploader {
         return Ok((upload_url.to_string(), upload_filename.to_string()));
     }
 
-    fn post_message(&self, upload_filename: &String) -> Result<String, Error>{
+    fn post_message(&self, upload_filename: &String) -> Result<String, Error> {
         let url = format!("https://discord.com/api/v9/channels/{}/messages", self.credentials.channel_id);
 
         let mut request = self.agent
@@ -153,6 +153,27 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
     fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<String, Error> {
         let (upload_url, upload_filename) = self.request_attachment_upload_url(size)?;
 
+        struct ReaderWrapper<R: Read, S: AddSignaler<Range<u64>>> {
+            reader: R,
+            signal: ProgressSignal<S>,
+            read: u64,
+        }
+
+        impl<R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<R, S> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if !self.signal.is_running() {
+                    return Err(Error::new(std::io::ErrorKind::Other, "Upload stopped"));
+                }
+
+                let read = self.reader.read(buf)?;
+
+                self.signal.add_signal(self.read..(self.read + read as u64));
+                self.read += read as u64;
+
+                return Ok(read);
+            }
+        }
+
         let _ = self.agent.put(upload_url.as_str())
             .set("accept-encoding", "gzip")
             .set("connection", "Keep-Alive")
@@ -160,7 +181,11 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
             .set("content-type", "application/x-x509-ca-cert")
             .set("host", "discord-attachments-uploads-prd.storage.googleapis.com")
             .set("user-agent", "Discord-Android/192013;RNA")
-            .send(reader)
+            .send(ReaderWrapper {
+                reader,
+                signal,
+                read: 0,
+            })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 
 
