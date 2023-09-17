@@ -81,11 +81,12 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
 }
 
 impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
-    fn next_uploader(&self, uploaders: &Vec<RefCell<PooledUploader<S, R>>>) -> usize {
+    fn next_uploader(&self, uploaders: &Vec<RefCell<PooledUploader<S, R>>>) -> Option<usize> {
         // TO THINK: take other data for the computation of the best uploader
         // like X-RateLimit-Remaining for bot requests
         uploaders.iter()
             .enumerate()
+            .filter(|(_,x)| !x.borrow().cooldown.is_working())
             .min_by_key(|(_, x)| {
                 let cell = x.borrow();
                 if cell.cooldown.is_working() {
@@ -93,7 +94,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 } else {
                     cell.cooldown.remaining_wait()
                 }
-            }).map(|(i, _)| i).unwrap()
+            }).map(|(i, _)| i)
     }
 
     fn _do_upload(
@@ -105,35 +106,38 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
         // acquire lock on uploaders
         loop {
             let uploaders = self.uploaders.access();
+            println!("Acquired lock on uploaders");
 
             // find next best uploader
             let uploader_index = self.next_uploader(&uploaders);
-            println!("Next uploader: {}", uploader_index);
+
+            // if no index is found => wait 50ms and retry
+            if uploader_index.is_none() {
+                drop(uploaders);
+                sleep(Duration::from_millis(50));
+                continue;
+            }
+
+            let uploader_index = uploader_index.unwrap();
 
             let mut uploader = uploaders.get(uploader_index)
                 .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "No uploader available"))?
                 .borrow_mut();
 
-            // if the best cooldown is currently regenerating
-            // wait 50ms and try again
-            if uploader.cooldown.is_working() {
-                drop(uploader);
-                drop(uploaders);
-                sleep(Duration::from_millis(50));
-                continue;
-            }
+            println!("StartWork {} | uploader.is_working: {}", uploader_index, uploader.cooldown.is_working());
+            uploader.cooldown.start_work(); // << mark this uploader as start working even if we aren't working rn
+
             println!("Waiting for cooldown {}ms ({})", uploader.cooldown.remaining_wait(), uploader_index);
-            uploader.cooldown.wait(); // wait for cooldown
 
-            // mark uploader as working
-            uploader.cooldown.start_work();
-
-            // clone uploader
+            // clone uploader so we can drop the lock on uploaders
+            let mut cooldown_wait_clone = uploader.cooldown.clone();
             let mut upl = uploader.uploader.clone();
 
-            // drop guards = allows other execution of for other threads of '_do_upload'
             drop(uploader);
-            drop(uploaders);
+            drop(uploaders); // << release the lock on uploaders
+
+
+            cooldown_wait_clone.wait(); // wait for cooldown
 
             let result = upl.do_upload(reader, size, signal);
             let ended_at = Instant::now();

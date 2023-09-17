@@ -144,6 +144,7 @@ pub enum CoolDown {
     Work(Safe<WorkCoolDown>),
 }
 
+#[derive(Clone)]
 pub struct WorkCoolDown {
     ended: Instant,
     pub duration: Duration,

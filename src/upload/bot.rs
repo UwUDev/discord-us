@@ -23,7 +23,7 @@ use crate::{
         },
         limit::{
             CoolDownMs,
-        }
+        },
     },
     Size,
 };
@@ -104,10 +104,15 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             .set("Authorization", format!("Bot {}", &self.credentials.access_token).as_str())
             .set("Content-Type", format!("multipart/form-data; boundary={}", boundary).as_str())
             .send(&mut body)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?
-            .into_json::<serde_json::Value>()?;
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 
-        let file_url = response["attachments"][0]["url"]
+        for key in response.headers_names() {
+            println!("{}: {}", key, response.header(&key).unwrap());
+        }
+
+        let data = response.into_json::<serde_json::Value>()?;
+
+        let file_url = data["attachments"][0]["url"]
             .as_str()
             .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_url not found"))?;
 
