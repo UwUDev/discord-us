@@ -254,7 +254,6 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
 
         while read < buf.len() {
             if let Some((range, stream)) = &mut self.current_stream {
-
                 let r = min(range.end, self.range.end);
 
                 if self.cursor < r {
@@ -295,6 +294,38 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
         }
 
         Ok(read)
+    }
+}
+
+pub struct StaticStream {
+    data: Vec<u8>,
+    cursor: usize,
+}
+
+impl StaticStream {
+    pub fn from(data: Vec<u8>) -> Self {
+        Self {
+            data,
+            cursor: 0,
+        }
+    }
+}
+
+impl Size for StaticStream {
+    fn get_size(&self) -> u64 {
+        self.data.len() as u64
+    }
+}
+
+impl Read for StaticStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let to_read = min(buf.len(), self.data.len() - self.cursor);
+
+        buf[..to_read].copy_from_slice(&self.data[self.cursor..self.cursor + to_read]);
+
+        self.cursor += to_read;
+
+        Ok(to_read)
     }
 }
 
@@ -349,7 +380,7 @@ mod test {
 #[cfg(test)]
 mod test2 {
     use std::ops::Range;
-    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkSize, LazyOpen, RangeLazyOpen};
+    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkSize, LazyOpen, RangeLazyOpen, StaticStream};
     use crate::Size;
     use std::io::Read;
 

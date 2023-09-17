@@ -1,5 +1,6 @@
 pub mod account;
 pub mod pool;
+pub mod bot;
 
 use std::{
     io::{Read, Error},

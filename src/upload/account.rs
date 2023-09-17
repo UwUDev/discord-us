@@ -10,12 +10,11 @@ use crate::{
     },
     signal::{
         AddSignaler,
-        progress::{ProgressSignal},
+        progress::{ProgressSignal,ProgressSignalTrait},
     },
 };
 
-use ureq::{Agent, agent, AgentBuilder, Request};
-use crate::signal::progress::ProgressSignalTrait;
+use ureq::{Agent, AgentBuilder};
 
 #[derive(Clone)]
 pub enum AccountSubscription {
@@ -38,9 +37,9 @@ impl AccountSubscription {
 
 #[derive(Clone)]
 pub struct AccountCredentials {
-    channel_id: u64,
-    access_token: String,
-    subscription: AccountSubscription,
+    pub(crate) channel_id: u64,
+    pub(crate) access_token: String,
+    pub(crate) subscription: AccountSubscription,
 }
 
 #[derive(Clone)]
@@ -235,10 +234,10 @@ mod test {
 
         let start = std::time::Instant::now();
 
-        upload.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap();
+        let url = upload.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap();
 
         let mut signal = signal.get_progression().access();
         signal.retrim_ranges();
-        println!("Uploaded | signal = {:?} | elapsed {:?}", signal.get_signal_data(), start.elapsed());
+        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url);
     }
 }
