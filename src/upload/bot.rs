@@ -9,6 +9,7 @@ use crate::{
     upload::{
         Uploader,
         UploaderMaxSize,
+        UploaderCoolDownResponse,
         account::{
             AccountCredentials,
         },
@@ -45,7 +46,7 @@ impl UploaderMaxSize for BotUploader {
 
 impl CoolDownMs for BotUploader {
     fn get_cool_down(&self) -> f64 {
-        return 5000.0;
+        return 0.0;
     }
 }
 
@@ -69,7 +70,7 @@ impl BotUploader {
 }
 
 impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader {
-    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<String, Error> {
+    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
         let boundary = Self::generate_boundary();
 
         let payload_json = json!({
@@ -106,9 +107,17 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             .send(&mut body)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 
-        for key in response.headers_names() {
-            println!("{}: {}", key, response.header(&key).unwrap());
-        }
+        let reset_after = match response.header("x-ratelimit-remaining") {
+            Some(x) => match x.parse::<u32>() {
+                Ok(0) => match response.header("x-ratelimit-reset-after") {
+                    Some(x) => x.parse::<f64>().ok(),
+                    _ => None,
+                },
+                _ => None
+            },
+            _ => None,
+        };
+
 
         let data = response.into_json::<serde_json::Value>()?;
 
@@ -116,7 +125,14 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             .as_str()
             .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_url not found"))?;
 
-        Ok(file_url.into())
+        return match reset_after {
+            Some(x) => Ok(
+                UploaderCoolDownResponse::CoolDown(file_url.into(), (x * 1000.0) as u64)
+            ),
+            _ => Ok(
+                UploaderCoolDownResponse::Success(file_url.into())
+            )
+        };
     }
 }
 
@@ -193,6 +209,6 @@ mod test {
 
         let mut signal = signal.get_progression().access();
         signal.retrim_ranges();
-        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url);
+        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
     }
 }

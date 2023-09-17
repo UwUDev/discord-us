@@ -198,6 +198,16 @@ impl CoolDown {
         }
     }
 
+    pub fn set_duration(&mut self, duration: Duration) {
+        match self {
+            CoolDown::Work(work) => {
+                let mut work = work.access();
+                work.duration = duration;
+            }
+            _ => {}
+        }
+    }
+
     pub fn remaining_wait(&self) -> u64 {
         match self {
             CoolDown::Void() => 0,

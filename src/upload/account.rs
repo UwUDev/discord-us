@@ -7,6 +7,7 @@ use crate::{
     upload::{
         Uploader,
         UploaderMaxSize,
+        UploaderCoolDownResponse,
     },
     signal::{
         AddSignaler,
@@ -149,7 +150,7 @@ impl AccountUploader {
 
 
 impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUploader {
-    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<String, Error> {
+    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
         let (upload_url, upload_filename) = self.request_attachment_upload_url(size)?;
 
         struct ReaderWrapper<R: Read, S: AddSignaler<Range<u64>>> {
@@ -188,7 +189,9 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 
 
-        self.post_message(&upload_filename)
+        let result = self.post_message(&upload_filename)?;
+
+        return Ok(UploaderCoolDownResponse::Success(result));
     }
 }
 
@@ -234,7 +237,7 @@ mod test {
 
         let start = std::time::Instant::now();
 
-        let url = upload.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap();
+        let url = upload.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap().unwrap();
 
         let mut signal = signal.get_progression().access();
         signal.retrim_ranges();

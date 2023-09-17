@@ -11,6 +11,7 @@ use crate::{
     upload::{
         Uploader,
         UploaderMaxSize,
+        UploaderCoolDownResponse,
     },
     signal::{
         AddSignaler,
@@ -102,7 +103,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
         reader: R,
         size: u64,
         signal: ProgressSignal<S>,
-    ) -> Result<String, Error> {
+    ) -> Result<UploaderCoolDownResponse<String>, Error> {
         // acquire lock on uploaders
         loop {
             let uploaders = self.uploaders.access();
@@ -139,7 +140,8 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
 
             cooldown_wait_clone.wait(); // wait for cooldown
 
-            let result = upl.do_upload(reader, size, signal);
+            let result = upl.do_upload(reader, size, signal)?;
+
             let ended_at = Instant::now();
 
             println!("Finished uploading, acquiring lock on uploaders ({})", uploader_index);
@@ -150,11 +152,15 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "An error occured: cannot unlock uploader"))?
                 .borrow_mut();
 
+            if let Some(cooldown_adapt) = result.get_cooldown() {
+                println!("Cooldown adapt {}ms ({})", cooldown_adapt, uploader_index);
+                uploader.cooldown.set_duration(Duration::from_millis(cooldown_adapt));
+            }
 
             println!("End work ({})", uploader_index);
             uploader.cooldown.end_work(ended_at);
-            println!("Result = {:?} ({})", result, uploader_index);
-            return result;
+
+            return Ok(result);
         }
     }
 }
@@ -170,7 +176,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploaderMaxSize for UploadPool<S, R> {
 }
 
 impl<S: AddSignaler<Range<u64>>, R: Read> Uploader<String, R, S> for UploadPool<S, R> {
-    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<String, Error> {
+    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
         self._do_upload(reader, size, signal)
     }
 }
@@ -205,13 +211,15 @@ mod test {
         let mut pool = UploadPool::new();
 
         pool.add_uploader(bot1);
-        pool.add_uploader(bot2);
+        //pool.add_uploader(bot2);
 
         let files = vec![
             "C:\\Users\\marti\\Downloads\\SHITPOST\\FyGEeXCWYAQJQCs.jpg",
             "C:\\Users\\marti\\Downloads\\SHITPOST\\20221126_170921.jpg",
             "C:\\Users\\marti\\Downloads\\SHITPOST\\f12b7918d66c91ad115c3748547b1269.jpg",
             "C:\\Users\\marti\\Downloads\\SHITPOST\\IMG_0656.png",
+            "C:\\Users\\marti\\Downloads\\we_live_we_love_we_lie_A2fAooXRmq8.webm",
+            "C:\\Users\\marti\\Downloads\\ayezlaref_2023-09-11-11-36-49_1694425009476.mp4",
         ];
 
 
@@ -227,8 +235,8 @@ mod test {
             offset += len;
             join.push(
                 std::thread::spawn(move || {
-                    let result = p.do_upload(file, len, signal);
-                    println!("Uploaded | result = {:?}", result);
+                    let result = p.do_upload(file, len, signal).unwrap();
+                    println!("Uploaded | result = {:?}", result.unwrap());
                 })
             );
         }

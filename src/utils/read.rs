@@ -380,7 +380,7 @@ mod test {
 #[cfg(test)]
 mod test2 {
     use std::ops::Range;
-    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkSize, LazyOpen, RangeLazyOpen, StaticStream};
+    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkSize, LazyOpen, RangeLazyOpen};
     use crate::Size;
     use std::io::Read;
 
