@@ -27,3 +27,4 @@ dyn-clonable = "0.9.0"
 walkdir = "2"
 
 aes-gcm = { version = "0.10.2", features = ["aes"] }
+ureq = {version = "2.7.1", features = ["brotli", "gzip", "json"] }

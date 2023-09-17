@@ -1,5 +1,5 @@
 use crate::{
-    signal::{AddSignaler, StoredSignal,DerivedSignal, GetSignal},
+    signal::{AddSignaler, StoredSignal,DerivedSignal},
     utils::{range::{RangedSort}, safe::{Safe}},
 };
 
@@ -80,9 +80,9 @@ mod test {
 
     #[test]
     pub fn test_range() {
-        let mut range: StoredSignal<Vec<Range<u64>>> = StoredSignal::default();
+        let range: StoredSignal<Vec<Range<u64>>> = StoredSignal::default();
 
-        let mut rc = Rc::new(RefCell::new(range));
+        let rc = Rc::new(RefCell::new(range));
 
         rc.clone().borrow_mut().add_signal(Range { start: 0, end: 10 });
 

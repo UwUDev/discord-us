@@ -71,8 +71,6 @@ impl RateLimiter {
     }
 
     fn compute_sleep_time(&self, count: f64, inner: &mut MutexGuard<'_, RateLimiterInner>) -> u64 {
-        let micros = (count / inner.tokens_per_units) as u64;
-
         let elapsed = inner.last_removal.elapsed().as_micros() as u64;
 
         let remaining = f64::min(inner.tokens_per_units * elapsed as f64, inner.tokens_per_units * inner.units);
