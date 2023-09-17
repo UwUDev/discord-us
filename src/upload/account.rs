@@ -192,3 +192,53 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
         self.post_message(&upload_filename)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        upload::{
+            account::{
+                AccountCredentials,
+                AccountSubscription,
+                AccountUploader,
+            },
+            Uploader,
+        },
+        signal::{
+            StoredSignal,
+            progress::{
+                ProgressSignal,
+                ProgressSignalAccessor
+            },
+        },
+    };
+
+    use std::{
+        ops::{Range}
+    };
+    use std::fs::File;
+    use crate::signal::StaticSignal;
+    use crate::utils::safe::SafeAccessor;
+
+    #[test]
+    pub fn test_account_uploader() {
+        let mut upload = AccountUploader::new(AccountCredentials {
+            channel_id: 0,
+            access_token: "//".to_string(),
+            subscription: AccountSubscription::Free,
+        });
+
+        let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
+
+        let mut file = File::open("test.mp4").unwrap();
+        let len = file.metadata().unwrap().len();
+
+        let start = std::time::Instant::now();
+
+        upload.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap();
+
+        let mut signal = signal.get_progression().access();
+        signal.retrim_ranges();
+        println!("Uploaded | signal = {:?} | elapsed {:?}", signal.get_signal_data(), start.elapsed());
+    }
+}
