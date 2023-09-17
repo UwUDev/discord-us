@@ -13,6 +13,11 @@ use std::{
     thread::{sleep},
 };
 
+use crate::{
+    utils::{
+        safe::{Safe, SafeAccessor},
+    }
+};
 
 struct RateLimiterInner {
     tokens_per_units: f64,
@@ -65,6 +70,22 @@ impl RateLimiter {
         Self::tokens_per_micro(tokens / 1_000_000.0)
     }
 
+    fn compute_sleep_time(&self, count: f64, inner: &mut MutexGuard<'_, RateLimiterInner>) -> u64 {
+        let micros = (count / inner.tokens_per_units) as u64;
+
+        let elapsed = inner.last_removal.elapsed().as_micros() as u64;
+
+        let remaining = f64::min(inner.tokens_per_units * elapsed as f64, inner.tokens_per_units * inner.units);
+
+        if remaining >= count {
+            return 0;
+        }
+
+        let sleep_time = (count - remaining) as f64 / inner.tokens_per_units;
+
+        return sleep_time as u64;
+    }
+
     fn _remove_tokens(&self, inner: &mut MutexGuard<'_, RateLimiterInner>, count: f64) -> Result<(), std::io::Error> {
         //if count > (inner.tokens_per_micros * 1_000_000.0) {
         //    return Err(std::io::Error::new(std::io::ErrorKind::Other, "Cannot remove more tokens than the rate limiter allows"));
@@ -113,6 +134,109 @@ pub struct VoidRateLimiter {}
 impl RateLimiterTrait for VoidRateLimiter {
     fn remove_tokens(&mut self, _count: f64) -> Result<(), std::io::Error> {
         Ok(())
+    }
+}
+
+/// A cooldown that can be used to wait for a certain amount of time
+/// before each operation.
+#[derive(Clone)]
+pub enum CoolDown {
+    Void(),
+    RateLimiter(RateLimiter),
+    Work (Safe<WorkCoolDown>),
+}
+
+pub struct WorkCoolDown {
+    ended: Instant,
+    pub duration: Duration,
+    pub is_working: bool,
+}
+
+impl CoolDown {
+    /// Create a new cooldown.
+    ///
+    /// * `cool_down_ms` - The number of milliseconds to wait between each operation.
+    pub fn new(cool_down_ms: f64) -> Self {
+        Self::RateLimiter(RateLimiter::new(1.0, cool_down_ms * 1_000.0))
+    }
+
+    pub fn work(cool_down_ms: f64) -> Self {
+        let duration = Duration::from_millis(cool_down_ms as u64);
+        Self::Work(Safe::wrap(WorkCoolDown {
+            ended: Instant::now() - duration,
+            duration: duration,
+            is_working: false,
+        }))
+    }
+
+    pub fn wait(&mut self) {
+        match self {
+            CoolDown::RateLimiter(rate_limiter) => rate_limiter.remove_tokens(1.0).unwrap(),
+            _ => {
+                sleep(Duration::from_micros(self.remaining_wait()))
+            },
+        }
+    }
+
+    pub fn start_work(&mut self) {
+        match self {
+            CoolDown::Work(work) => {
+                let mut work = work.access();
+                work.is_working = true;
+            },
+            _ => {},
+        }
+    }
+
+    pub fn end_work(&mut self) {
+        match self {
+            CoolDown::Work(work) => {
+                let mut work = work.access();
+                work.is_working = false;
+                work.ended = Instant::now();
+            },
+            _ => {},
+        }
+    }
+
+    pub fn remaining_wait(&self) -> u64 {
+        match self {
+            CoolDown::Void() => 0,
+            CoolDown::RateLimiter(rate_limiter) => rate_limiter.compute_sleep_time(1.0, &mut rate_limiter.inner.lock().unwrap()),
+            CoolDown::Work(work) => {
+                let work = work.access();
+                let elapsed = work.ended.elapsed().as_micros() as u64;
+
+                if elapsed > work.duration.as_micros() as u64 {
+                    return 0;
+                }
+
+                return work.duration.as_micros() as u64 - elapsed;
+            },
+        }
+    }
+    
+    pub fn is_working(&self) -> bool {
+        match self {
+            CoolDown::Work(work) => {
+                let work = work.access();
+                return work.is_working;
+            },
+            _ => false,
+        }
+    }
+}
+
+pub trait CoolDownMs {
+    /// Get the cooldown in milliseconds.
+    fn get_cool_down(&self) -> f64;
+
+    fn create_cooldown_wait(&self) -> CoolDown {
+        return if self.get_cool_down() < 0.0 {
+            CoolDown::Void()
+        } else {
+            CoolDown::new(self.get_cool_down())
+        };
     }
 }
 

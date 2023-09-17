@@ -1,7 +1,5 @@
 use std::{
     sync::{Arc, Mutex, MutexGuard},
-    rc::{Rc},
-    cell::{RefCell},
 };
 
 /// A thread safe guard
