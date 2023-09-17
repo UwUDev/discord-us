@@ -29,7 +29,7 @@ use crate::{
     },
 };
 
-pub trait ClonableUploader<V, R: Read, S: AddSignaler<Range<u64>>> : DynClone + Uploader<V, R, S> {}
+pub trait ClonableUploader<V, R: Read, S: AddSignaler<Range<u64>>>: DynClone + Uploader<V, R, S> {}
 
 clone_trait_object!(<V, R, S> ClonableUploader<V, R, S> where R: Read, S: AddSignaler<Range<u64>>);
 
@@ -83,19 +83,23 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
 
 impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
     fn next_uploader(&self, uploaders: &Vec<RefCell<PooledUploader<S, R>>>) -> Option<usize> {
-        // TO THINK: take other data for the computation of the best uploader
-        // like X-RateLimit-Remaining for bot requests
-        uploaders.iter()
-            .enumerate()
-            .filter(|(_,x)| !x.borrow().cooldown.is_working())
-            .min_by_key(|(_, x)| {
-                let cell = x.borrow();
-                if cell.cooldown.is_working() {
-                    u64::MAX
-                } else {
-                    cell.cooldown.remaining_wait()
-                }
-            }).map(|(i, _)| i)
+        // First it should find a uploader with concurrency to the lowest
+        // then it should find a uploader with the lowest cooldown
+        let mut mut_keys :Vec<usize>= Vec::new();
+
+        for i in 0..uploaders.len() {
+            let cooldown = &uploaders.get(i).unwrap().borrow().cooldown;
+            if cooldown.can_accept_more() {
+                mut_keys.push(i);
+            }
+        }
+
+        mut_keys.sort_by_key(|(x)| {
+            let cooldown = &uploaders.get(*x).unwrap().borrow().cooldown;
+            (cooldown.get_concurrency(), cooldown.remaining_wait())
+        });
+
+        return mut_keys.first().map(|x| *x);
     }
 
     fn _do_upload(
@@ -125,7 +129,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "No uploader available"))?
                 .borrow_mut();
 
-            println!("StartWork {} | uploader.is_working: {}", uploader_index, uploader.cooldown.is_working());
+            println!("StartWork {} | uploader.concurrency: {}", uploader_index, uploader.cooldown.get_concurrency());
             uploader.cooldown.start_work(); // << mark this uploader as start working even if we aren't working rn
 
             println!("Waiting for cooldown {}ms ({})", uploader.cooldown.remaining_wait(), uploader_index);
@@ -152,10 +156,15 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "An error occured: cannot unlock uploader"))?
                 .borrow_mut();
 
-            if let Some(cooldown_adapt) = result.get_cooldown() {
-                println!("Cooldown adapt {}ms ({})", cooldown_adapt, uploader_index);
-                uploader.cooldown.set_duration(Duration::from_millis(cooldown_adapt));
+            match result {
+                UploaderCoolDownResponse::CoolDown(_, cooldown, concurrency) => {
+                    println!("Cooldown {}ms ({}) + concurrency = {}", cooldown, uploader_index, concurrency.max(1));
+                    uploader.cooldown.set_duration(Duration::from_millis(cooldown));
+                    uploader.cooldown.set_max_concurrency(concurrency.max(1)); // in case of concurrency == 0, this will produce a deadlock
+                }
+                _ => {}
             }
+
 
             println!("End work ({})", uploader_index);
             uploader.cooldown.end_work(ended_at);
@@ -186,56 +195,55 @@ mod test {
     use std::fs::File;
     use std::ops::Range;
     use std::thread::JoinHandle;
-    use crate::signal::progress::{ProgressSignal,ProgressSignalAccessor};
+    use crate::signal::progress::{ProgressSignal, ProgressSignalAccessor};
     use crate::signal::{StoredSignal, StaticSignal};
+    use crate::Size;
     use crate::upload::account::{AccountCredentials, AccountSubscription};
     use crate::upload::bot::BotUploader;
     use crate::upload::pool::{UploadPool};
     use crate::upload::Uploader;
+    use crate::utils::read::StaticStream;
     use crate::utils::safe::{SafeAccessor};
 
     #[test]
     pub fn test() {
-        let bot1 = BotUploader::new(AccountCredentials {
-            channel_id: 0,
-            access_token: "//".into(),
-            subscription: AccountSubscription::Free,
-        });
-
-        let bot2 = BotUploader::new(AccountCredentials {
-            channel_id: 0,
-            access_token: "//".into(),
-            subscription: AccountSubscription::Free,
-        });
+        let tokens = vec![
+        ""
+        ];
 
         let mut pool = UploadPool::new();
 
-        pool.add_uploader(bot1);
-        //pool.add_uploader(bot2);
+        for token in tokens {
+            pool.add_uploader(BotUploader::new(AccountCredentials {
+                channel_id: 1147616702780149781,
+                access_token: token.into(),
+                subscription: AccountSubscription::Free,
+            }));
+        }
 
-        let files = vec![
-            "C:\\Users\\marti\\Downloads\\SHITPOST\\FyGEeXCWYAQJQCs.jpg",
-            "C:\\Users\\marti\\Downloads\\SHITPOST\\20221126_170921.jpg",
-            "C:\\Users\\marti\\Downloads\\SHITPOST\\f12b7918d66c91ad115c3748547b1269.jpg",
-            "C:\\Users\\marti\\Downloads\\SHITPOST\\IMG_0656.png",
-            "C:\\Users\\marti\\Downloads\\we_live_we_love_we_lie_A2fAooXRmq8.webm",
-            "C:\\Users\\marti\\Downloads\\ayezlaref_2023-09-11-11-36-49_1694425009476.mp4",
-        ];
+        // let files = vec![
+        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\FyGEeXCWYAQJQCs.jpg",
+        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\20221126_170921.jpg",
+        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\f12b7918d66c91ad115c3748547b1269.jpg",
+        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\IMG_0656.png",
+        //     "C:\\Users\\marti\\Downloads\\we_live_we_love_we_lie_A2fAooXRmq8.webm",
+        //     "C:\\Users\\marti\\Downloads\\ayezlaref_2023-09-11-11-36-49_1694425009476.mp4",
+        // ];
 
 
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
-        let mut join : Vec<JoinHandle<()>> = Vec::new();
+        let mut join: Vec<JoinHandle<()>> = Vec::new();
         let mut offset = 0;
-        for file in files {
-            let file = File::open(file).unwrap();
-            let len = file.metadata().unwrap().len();
+        for i in 0..30 {
+            let stream = StaticStream::from([10u8; 100].to_vec());
+            let len = stream.get_size();
             let mut p = pool.clone();
             let signal = signal.clone_with_offset(offset);
             offset += len;
             join.push(
                 std::thread::spawn(move || {
-                    let result = p.do_upload(file, len, signal).unwrap();
+                    let result = p.do_upload(stream, len, signal).unwrap();
                     println!("Uploaded | result = {:?}", result.unwrap());
                 })
             );

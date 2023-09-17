@@ -21,22 +21,15 @@ pub trait UploaderMaxSize {
 }
 
 pub enum UploaderCoolDownResponse<T> {
-    CoolDown(T, u64),
+    CoolDown(T, u64, u32),
     Success(T),
 }
 
 impl<T> UploaderCoolDownResponse<T> {
     pub fn unwrap(self) -> T {
         match self {
-            Self::CoolDown(t, _) => t,
+            Self::CoolDown(t, _,_) => t,
             Self::Success(t) => t,
-        }
-    }
-
-    pub fn get_cooldown(&self) -> Option<u64> {
-        match self {
-            Self::CoolDown(_, cooldown) => Some(*cooldown),
-            Self::Success(_) => None,
         }
     }
 }

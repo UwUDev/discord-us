@@ -148,7 +148,9 @@ pub enum CoolDown {
 pub struct WorkCoolDown {
     ended: Instant,
     pub duration: Duration,
-    pub is_working: bool,
+
+    pub max_concurrency: u32,
+    pub concurrency: u32,
 }
 
 impl CoolDown {
@@ -164,7 +166,8 @@ impl CoolDown {
         Self::Work(Safe::wrap(WorkCoolDown {
             ended: Instant::now() - duration,
             duration: duration,
-            is_working: false,
+            max_concurrency: 1,
+            concurrency: 0,
         }))
     }
 
@@ -181,7 +184,7 @@ impl CoolDown {
         match self {
             CoolDown::Work(work) => {
                 let mut work = work.access();
-                work.is_working = true;
+                work.concurrency += 1;
             }
             _ => {}
         }
@@ -191,8 +194,10 @@ impl CoolDown {
         match self {
             CoolDown::Work(work) => {
                 let mut work = work.access();
-                work.is_working = false;
+                work.concurrency -= 1;
+                //if work.concurrency == 0 {
                 work.ended = at;
+                //}
             }
             _ => {}
         }
@@ -225,30 +230,53 @@ impl CoolDown {
         }
     }
 
-    pub fn is_working(&self) -> bool {
+    pub fn can_accept_more(&self) -> bool {
         match self {
             CoolDown::Work(work) => {
                 let work = work.access();
-                return work.is_working;
+                return work.concurrency < work.max_concurrency;
             }
-            _ => false,
+            _ => true,
+        }
+    }
+
+    pub fn set_max_concurrency(&mut self, max_concurrency: u32) {
+        match self {
+            CoolDown::Work(work) => {
+                let mut work = work.access();
+                work.max_concurrency = max_concurrency;
+            }
+            _ => {}
+        }
+    }
+
+
+    pub fn get_concurrency(&self) -> u32 {
+        match self {
+            CoolDown::Work(work) => {
+                let work = work.access();
+                return work.concurrency;
+            }
+            _ => 0,
         }
     }
 }
 
 pub trait CoolDownMs {
     /// Get the cooldown in milliseconds.
-    fn get_cool_down(&self) -> f64;
+    fn get_cool_down(&self) -> (f64, u32);
 
     fn create_cooldown_wait(&self) -> CoolDown {
-        return if self.get_cool_down() < 0.0 {
+        let (cool_down, concurrency) = self.get_cool_down();
+        return if cool_down < 0.0 {
             CoolDown::Void()
         } else {
-            let duration = Duration::from_millis(self.get_cool_down() as u64);
+            let duration = Duration::from_millis(cool_down as u64);
             CoolDown::Work(Safe::wrap(WorkCoolDown {
                 ended: Instant::now() - duration,
                 duration,
-                is_working: false,
+                max_concurrency: concurrency,
+                concurrency: 0,
             }))
         };
     }

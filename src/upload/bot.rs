@@ -45,8 +45,8 @@ impl UploaderMaxSize for BotUploader {
 }
 
 impl CoolDownMs for BotUploader {
-    fn get_cool_down(&self) -> f64 {
-        return 0.0;
+    fn get_cool_down(&self) -> (f64, u32) {
+        return (0.0, 5);
     }
 }
 
@@ -74,7 +74,6 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
         let boundary = Self::generate_boundary();
 
         let payload_json = json!({
-            "content": "test",
             "attachments": [{
                 "id": 0,
                 "description": "File",
@@ -107,108 +106,102 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             .send(&mut body)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 
-        let reset_after = match response.header("x-ratelimit-remaining") {
-            Some(x) => match x.parse::<u32>() {
-                Ok(0) => match response.header("x-ratelimit-reset-after") {
-                    Some(x) => x.parse::<f64>().ok(),
-                    _ => None,
-                },
-                _ => None
-            },
-            _ => None,
+        let remaining = match response.header("x-ratelimit-remaining") {
+            Some(x) => x.parse::<u32>().unwrap(),
+            _ => 1,
         };
 
-
-        let data = response.into_json::<serde_json::Value>()?;
-
-        let file_url = data["attachments"][0]["url"]
-            .as_str()
-            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_url not found"))?;
-
-        return match reset_after {
-            Some(x) => Ok(
-                UploaderCoolDownResponse::CoolDown(file_url.into(), (x * 1000.0) as u64)
-            ),
-            _ => Ok(
-                UploaderCoolDownResponse::Success(file_url.into())
-            )
+        let reset_after = match response.header("x-ratelimit-reset-after") {
+            Some(x) => x.parse::<f64>().unwrap(),
+            _ => 0.0
         };
-    }
-}
 
-struct FormDataStream<R: Read, S: AddSignaler<Range<u64>>> {
-    reader: R,
-    signal: ProgressSignal<S>,
-    read: u64,
-    size: u64,
-}
+            println!("Remaining: {} | Reset after: {:?}", remaining, reset_after);
 
-impl<R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<R, S> {
-    fn get_size(&self) -> u64 {
-        self.size
-    }
-}
 
-impl<R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<R, S> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        if !self.signal.is_running() {
-            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
+            let data = response.into_json::<serde_json::Value>() ?;
+
+            let file_url = data["attachments"][0]["url"]
+                .as_str()
+                .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_url not found"))?;
+
+            Ok(UploaderCoolDownResponse::CoolDown(file_url.into(), (reset_after * 1000.0) as u64, remaining))
         }
-
-        let read = self.reader.read(buf)?;
-
-        self.signal.add_signal(self.read..self.read + read as u64);
-        self.read += read as u64;
-        Ok(read)
     }
-}
 
-#[cfg(test)]
-mod test {
-    use crate::{upload::{
-        account::{
-            AccountCredentials,
-            AccountSubscription,
-        },
-        bot::{
-            BotUploader,
-        },
-        Uploader,
-    }, signal::{
-        StoredSignal,
-        progress::{
-            ProgressSignal,
-            ProgressSignalAccessor,
-        },
-    },
-    };
-
-    use std::{
-        ops::{Range}
-    };
-    use std::fs::File;
-    use crate::signal::StaticSignal;
-    use crate::utils::safe::SafeAccessor;
-
-    #[test]
-    pub fn test_account_uploader() {
-        let mut uploader = BotUploader::new(AccountCredentials {
-            channel_id: 0,
-            access_token: "//".to_string(),
-            subscription: AccountSubscription::Free,
-        });
-
-        let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
-
-        let mut file = File::open("test.mp4").unwrap();
-        let len = file.metadata().unwrap().len();
-
-        let start = std::time::Instant::now();
-
-        let url = uploader.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap();
-
-        let mut signal = signal.get_progression().access();
-        signal.retrim_ranges();
-        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
+    struct FormDataStream<R: Read, S: AddSignaler<Range<u64>>> {
+        reader: R,
+        signal: ProgressSignal<S>,
+        read: u64,
+        size: u64,
     }
-}
+
+    impl<R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<R, S> {
+        fn get_size(&self) -> u64 {
+            self.size
+        }
+    }
+
+    impl<R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<R, S> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if !self.signal.is_running() {
+                return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
+            }
+
+            let read = self.reader.read(buf)?;
+
+            self.signal.add_signal(self.read..self.read + read as u64);
+            self.read += read as u64;
+            Ok(read)
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use crate::{upload::{
+            account::{
+                AccountCredentials,
+                AccountSubscription,
+            },
+            bot::{
+                BotUploader,
+            },
+            Uploader,
+        }, signal::{
+            StoredSignal,
+            progress::{
+                ProgressSignal,
+                ProgressSignalAccessor,
+            },
+        },
+        };
+
+        use std::{
+            ops::{Range}
+        };
+        use std::fs::File;
+        use crate::signal::StaticSignal;
+        use crate::utils::safe::SafeAccessor;
+
+        #[test]
+        pub fn test_account_uploader() {
+            let mut uploader = BotUploader::new(AccountCredentials {
+                channel_id: 0,
+                access_token: "//".to_string(),
+                subscription: AccountSubscription::Free,
+            });
+
+            let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
+
+            let mut file = File::open("test.mp4").unwrap();
+            let len = file.metadata().unwrap().len();
+
+            let start = std::time::Instant::now();
+
+            let url = uploader.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap();
+
+            let mut signal = signal.get_progression().access();
+            signal.retrim_ranges();
+            println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
+        }
+    }
