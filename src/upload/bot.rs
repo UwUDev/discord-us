@@ -116,98 +116,104 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             _ => 0.0
         };
 
-            println!("Remaining: {} | Reset after: {:?}", remaining, reset_after);
+        println!("Remaining: {} | Reset after: {:?}", remaining, reset_after);
 
 
-            let data = response.into_json::<serde_json::Value>() ?;
+        let data = response.into_json::<serde_json::Value>()?;
 
-            let file_url = data["attachments"][0]["url"]
-                .as_str()
-                .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_url not found"))?;
+        let file_url = data["attachments"][0]["url"]
+            .as_str()
+            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_url not found"))?;
 
-            Ok(UploaderCoolDownResponse::CoolDown(file_url.into(), (reset_after * 1000.0) as u64, remaining))
+        if !signal.is_running() {
+            return Err(Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
         }
-    }
 
-    struct FormDataStream<'a, R: Read, S: AddSignaler<Range<u64>>> {
-        reader: R,
-        signal: &'a mut ProgressSignal<S>,
-        read: u64,
-        size: u64,
+        Ok(UploaderCoolDownResponse::CoolDown(file_url.into(), (reset_after * 1000.0) as u64, remaining))
     }
+}
 
-    impl<'a, R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<'a, R, S> {
-        fn get_size(&self) -> u64 {
-            self.size
+struct FormDataStream<'a, R: Read, S: AddSignaler<Range<u64>>> {
+    reader: R,
+    signal: &'a mut ProgressSignal<S>,
+    read: u64,
+    size: u64,
+}
+
+impl<'a, R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<'a, R, S> {
+    fn get_size(&self) -> u64 {
+        self.size
+    }
+}
+
+impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<'a, R, S> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if !self.signal.is_running() {
+            println!("Interrupted");
+            return Ok(0);
+            //return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
         }
-    }
 
-    impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<'a, R, S> {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            if !self.signal.is_running() {
-                return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
-            }
-
-            if self.read >= self.size {
-                return Ok(0);
-            }
-
-            let to_read = std::cmp::min(buf.len(), (self.size - self.read) as usize);
-
-            let read = self.reader.read(&mut buf[..to_read])?;
-
-            self.signal.add_signal(self.read..self.read + read as u64);
-            self.read += read as u64;
-            Ok(read)
+        if self.read >= self.size {
+            return Ok(0);
         }
-    }
 
-    #[cfg(test)]
-    mod test {
-        use crate::{upload::{
-            account::{
-                AccountCredentials,
-                AccountSubscription,
-            },
-            bot::{
-                BotUploader,
-            },
-            Uploader,
-        }, signal::{
-            StoredSignal,
-            progress::{
-                ProgressSignal,
-                ProgressSignalAccessor,
-            },
+        let to_read = std::cmp::min(buf.len(), (self.size - self.read) as usize);
+
+        let read = self.reader.read(&mut buf[..to_read])?;
+
+        self.signal.add_signal(self.read..self.read + read as u64);
+        self.read += read as u64;
+        Ok(read)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{upload::{
+        account::{
+            AccountCredentials,
+            AccountSubscription,
         },
-        };
+        bot::{
+            BotUploader,
+        },
+        Uploader,
+    }, signal::{
+        StoredSignal,
+        progress::{
+            ProgressSignal,
+            ProgressSignalAccessor,
+        },
+    },
+    };
 
-        use std::{
-            ops::{Range}
-        };
-        use std::fs::File;
-        use crate::signal::StaticSignal;
-        use crate::utils::safe::SafeAccessor;
+    use std::{
+        ops::{Range}
+    };
+    use std::fs::File;
+    use crate::signal::StaticSignal;
+    use crate::utils::safe::SafeAccessor;
 
-        #[test]
-        pub fn test_account_uploader() {
-            let mut uploader = BotUploader::new(AccountCredentials {
-                channel_id: 0,
-                access_token: "//".to_string(),
-                subscription: AccountSubscription::Free,
-            });
+    #[test]
+    pub fn test_account_uploader() {
+        let mut uploader = BotUploader::new(AccountCredentials {
+            channel_id: 0,
+            access_token: "//".to_string(),
+            subscription: AccountSubscription::Free,
+        });
 
-            let mut signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
+        let mut signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
-            let mut file = File::open("test.mp4").unwrap();
-            let len = file.metadata().unwrap().len();
+        let mut file = File::open("test.mp4").unwrap();
+        let len = file.metadata().unwrap().len();
 
-            let start = std::time::Instant::now();
+        let start = std::time::Instant::now();
 
-            let url = uploader.do_upload(&mut file, len, &mut signal).unwrap();
+        let url = uploader.do_upload(&mut file, len, &mut signal).unwrap();
 
-            let mut signal = signal.get_progression().access();
-            signal.retrim_ranges();
-            println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
-        }
+        let mut signal = signal.get_progression().access();
+        signal.retrim_ranges();
+        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
     }
+}

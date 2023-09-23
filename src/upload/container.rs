@@ -98,7 +98,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
             }
 
             for join_handle in join_handles {
-                join_handle.join().unwrap();
+                let _ = join_handle.join();
             }
         });
 
@@ -151,6 +151,14 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         }
     }
 
+    pub fn add_uploaded_containers(&mut self, c: Vec<Container>) {
+        let mut containers = self.containers.access();
+        let mut remaining_containers = self.remaining_containers.access();
+
+        containers.extend(c);
+        remaining_containers.retain(|r| !containers.iter().any(|c| c.meta.bytes_range == *r));
+    }
+
     fn run(&mut self) {
         #[cfg(test)]
         println!("Worker thread started");
@@ -179,7 +187,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         let container = PartialContainer::new_container(
             self.splitter.chunk_size,
             self.splitter.max_size,
-            range,
+            range.clone(),
             self.password.clone(),
         ).unwrap();
 
@@ -192,12 +200,10 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         ) {
             self.containers.access().push(container.into_container(url.unwrap()));
         } else {
-            /*let mut remaining_containers = self.remaining_containers.access();
+            let mut remaining_containers = self.remaining_containers.access();
+            eprintln!("Error uploading range {:?}, retrying", range);
             remaining_containers.push_back(range); // if an error occured: retry
-
-             */
         }
-
     }
 }
 
@@ -213,7 +219,8 @@ mod test {
         },
         signal::{
             progress::{
-                ProgressSignal
+                ProgressSignal,
+                ProgressSignalTrait,
             },
             StoredSignal,
         },
@@ -222,6 +229,7 @@ mod test {
         },
         utils::{
             read::{MultiChunkedStream},
+            safe::{SafeAccessor}
         },
         Size,
     };
@@ -256,8 +264,23 @@ mod test {
             5,
         );
 
+        let mut s = signal.clone();
+
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            println!("Stopping");
+            s.stop();
+        });
+
         let r = u.upload(r.clone(), r.get_size(), &mut signal.clone().into()).unwrap();
 
+        let v = u.remaining_containers.access().clone();
+
         println!("Containers: {:?}", r);
+        println!("Remaining: {:?}", v);
+
+        for a in v.iter() {
+            println!("Size: {}", a.get_size());
+        }
     }
 }

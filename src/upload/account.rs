@@ -163,7 +163,8 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
         impl<'a , R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<'a, R, S> {
             fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
                 if !self.signal.is_running() {
-                    return Err(Error::new(std::io::ErrorKind::Other, "Upload stopped"));
+                    println!("Interrupted");
+                    return Ok(0);
                 }
 
                 if self.read >= self.size {
@@ -200,6 +201,10 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
 
 
         let result = self.post_message(&upload_filename)?;
+
+        if !signal.is_running() {
+            return Err(Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
+        }
 
         return Ok(UploaderCoolDownResponse::Success(result));
     }

@@ -15,15 +15,15 @@ use crate::{
 pub struct ContainerMeta {
     /// The size of each chunk
     /// => includes padding and metadata for chunks
-    chunk_size: u64,
+    pub chunk_size: u64,
 
     /// The number of chunks in the container
-    chunk_count: u64,
+    pub chunk_count: u64,
 
     #[serde(with = "HexForm")]
-    salt: [u8; 16],
+    pub salt: [u8; 16],
 
-    bytes_range: Range<u64>,
+    pub bytes_range: Range<u64>,
 }
 
 unsafe impl Send for ContainerMeta {}
@@ -124,8 +124,8 @@ pub fn max_payload_size(max_container_count: u64, chunk_size: u64) -> u64 {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Container {
-    meta: ContainerMeta,
-    public_url: String,
+    pub meta: ContainerMeta,
+    pub public_url: String,
 }
 
 #[derive(Debug, Clone, Copy)]
