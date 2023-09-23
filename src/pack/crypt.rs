@@ -1,7 +1,9 @@
+use std::io::Read;
 use aes_gcm::{
     AeadInPlace, Aes256Gcm, KeyInit, AeadCore,
     aead::{OsRng, Error},
 };
+use crate::utils::read::Chunked;
 
 /// Encrypted Chunks are composed in this way
 /// 0      -     11 | 12   -   <chunk-size>-1 | <chunk-size> - <chunk-size> + 16 |
@@ -10,7 +12,7 @@ use aes_gcm::{
 ///
 pub const METADATA_SIZE: u64 = 28;
 
-
+#[derive(Clone)]
 pub struct ChunkCipher {
     cipher: Aes256Gcm,
 }
@@ -74,6 +76,44 @@ impl ChunkCipher {
         )?;
 
         return Ok(());
+    }
+}
+
+pub struct StreamCipher<R: Read> {
+    cipher: ChunkCipher,
+    reader: R,
+    chunk_size: usize,
+}
+
+impl<R: Read> StreamCipher<R> {
+    pub fn new(reader: R, chunk_size: usize, cipher: ChunkCipher) -> Self {
+        Self {
+            cipher,
+            reader,
+            chunk_size,
+        }
+    }
+}
+
+impl<R: Read> Chunked for StreamCipher<R> {
+    fn process_next_chunk(&mut self) -> Option<Vec<u8>> {
+        let mut chunk = /*[0u8;1<<16];*/vec![0u8; self.chunk_size];
+
+        let mut read = 0;
+
+        while read < self.chunk_size - METADATA_SIZE as usize {
+            let r = self.reader.read(&mut chunk[(12 + read) as usize..(self.chunk_size - 16) as usize]).unwrap();
+
+            if r == 0 {
+                break;
+            }
+
+            read += r;
+        }
+
+        self.cipher.encrypt(&mut chunk).unwrap();
+
+        Some(chunk.to_vec())
     }
 }
 

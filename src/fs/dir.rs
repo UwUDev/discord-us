@@ -28,14 +28,14 @@ use serde::{
 };
 
 #[derive(Clone, Debug)]
-struct DirEntry {
+pub struct DirEntry {
     path: PathBuf,
 
     range: Range<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct DirEntryNode {
+pub struct DirEntryNode {
     range: Range<u64>,
 }
 
@@ -45,7 +45,7 @@ impl Ranged for DirEntry {
     }
 }
 
-fn scan_files(files: Vec<PathBuf>) -> Result<Vec<DirEntry>, std::io::Error> {
+pub fn scan_files(files: Vec<PathBuf>) -> Result<Vec<DirEntry>, std::io::Error> {
     let mut cursor = 0;
 
     let mut dir_entries: Vec<DirEntry> = Vec::new();
@@ -55,7 +55,7 @@ fn scan_files(files: Vec<PathBuf>) -> Result<Vec<DirEntry>, std::io::Error> {
         for fw in WalkDir::new(&file) {
             let entry = fw?;
 
-            let metadata = entry.metadata().unwrap();
+            let metadata = entry.metadata()?;
 
             let size = if metadata.is_dir() {
                 0
@@ -82,7 +82,7 @@ fn scan_files(files: Vec<PathBuf>) -> Result<Vec<DirEntry>, std::io::Error> {
 
 const FILE_READER_CHUNK_SIZE: usize = 2048;
 
-struct ChunkedFileReader {
+pub struct ChunkedFileReader {
     file: File,
 }
 

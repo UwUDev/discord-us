@@ -1,11 +1,11 @@
-use std::ops::Range;
+use std::{ops::Range, io::Read};
 use serde::{Deserialize, Serialize};
 use hex_buffer_serde::{Hex as _, HexForm};
 use crate::{
     pack::{
         Size,
         key::KeyDerivator,
-        crypt::{ChunkCipher, METADATA_SIZE},
+        crypt::{ChunkCipher, METADATA_SIZE, StreamCipher},
     },
 };
 
@@ -84,6 +84,10 @@ impl PartialContainer {
         })
     }
 
+    pub fn encrypt_stream<R: Read> (&self, reader: R) -> StreamCipher<R> {
+        StreamCipher::new(reader, self.meta.chunk_size as usize, self.cipher.clone())
+    }
+
     /// Transform a partial container into a container
     ///
     /// * `public_url` - The public url of the container data's
@@ -118,7 +122,90 @@ pub fn max_payload_size(max_container_count: u64, chunk_size: u64) -> u64 {
     max_chunk_count(max_container_count, chunk_size) * chunk_payload_size(chunk_size)
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Container {
     meta: ContainerMeta,
     public_url: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkSplitter {
+    pub(crate) chunk_size: u64,
+    pub(crate) pad_size: u64,
+    pub(crate) max_size: u64,
+}
+
+impl ChunkSplitter {
+    pub fn new(chunk_size: u64, pad_size: u64, max_size: u64) -> Self {
+        Self {
+            chunk_size,
+            pad_size,
+            max_size,
+        }
+    }
+
+    /// Converts a len into a multiple ranges
+    /// representing each a container
+    /// Each container contains X chunks of chunk_size
+    /// And each chunk can be padded (means that the chunk size is bigger than the actual data)
+    pub fn split_into_ranges(&self, len: u64) -> Vec<Range<u64>> {
+        let payload_size = self.chunk_size - self.pad_size;
+
+        let total_chunk_count = (len + payload_size - 1) / payload_size;
+
+        let containers_per_range = self.max_size / self.chunk_size;
+
+        let ranges_count = (total_chunk_count + containers_per_range - 1) / containers_per_range;
+
+        let mut ranges: Vec<Range<u64>> = Vec::with_capacity(ranges_count as usize);
+
+        for i in 0..ranges_count {
+            let range_start = i * containers_per_range * (self.chunk_size - self.pad_size);
+
+            let range_end = len.min((i + 1) * containers_per_range * (self.chunk_size - self.pad_size));
+
+            ranges.push(range_start..range_end);
+        }
+
+        ranges
+    }
+
+    /// Adds padding to a range
+    /// Convert the range with payload data into a range with padded data
+    pub fn add_padding(&self, range: &Range<u64>) -> Range<u64> {
+        let chunks_before = range.start / (self.chunk_size - self.pad_size);
+
+        let size = range.end - range.start;
+
+        let chunks_within = size / (self.chunk_size - self.pad_size);
+
+        let start = range.start + chunks_before * self.pad_size;
+        let mut end = range.end + chunks_within * self.pad_size;
+
+        if end % self.chunk_size != 0 {
+            end += self.chunk_size - (end % self.chunk_size);
+        }
+
+        return (start)..(end);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    pub fn test() {
+        let splitter = super::ChunkSplitter {
+            chunk_size: 1 << 16,
+            pad_size: 36,
+            max_size: 25 * 1024 * 1024,
+        };
+
+        let ranges = splitter.split_into_ranges(100 * 1000 * 1000);
+
+        println!("{:?}", ranges);
+
+        for range in ranges {
+            println!("{:?}", splitter.add_padding(&range));
+        }
+    }
 }

@@ -167,11 +167,19 @@ impl<T: RangeLazyOpen<R> + Size + ChunkSize, R: Chunked> RangeLazyOpen<OmitStrea
     }
 }
 
-#[derive(Clone)]
 pub struct MultiChunkedStream<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> {
     chunk_readers: Vec<R>,
 
     _phantom: PhantomData<C>,
+}
+
+impl <R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Clone for MultiChunkedStream<R, C> {
+    fn clone(&self) -> Self {
+        Self {
+            chunk_readers: self.chunk_readers.clone(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> From<Vec<R>> for MultiChunkedStream<R, C> {

@@ -157,6 +157,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
             reader: R,
             signal: &'a mut ProgressSignal<S>,
             read: u64,
+            size: u64,
         }
 
         impl<'a , R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<'a, R, S> {
@@ -164,6 +165,14 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
                 if !self.signal.is_running() {
                     return Err(Error::new(std::io::ErrorKind::Other, "Upload stopped"));
                 }
+
+                if self.read >= self.size {
+                    return Ok(0);
+                }
+
+                let to_read = std::cmp::min(buf.len(), (self.size - self.read) as usize);
+
+                let read = self.reader.read(&mut buf[..to_read])?;
 
                 let read = self.reader.read(buf)?;
 
@@ -185,6 +194,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
                 reader,
                 signal,
                 read: 0,
+                size,
             })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 

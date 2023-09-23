@@ -148,7 +148,13 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
                 return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
             }
 
-            let read = self.reader.read(buf)?;
+            if self.read >= self.size {
+                return Ok(0);
+            }
+
+            let to_read = std::cmp::min(buf.len(), (self.size - self.read) as usize);
+
+            let read = self.reader.read(&mut buf[..to_read])?;
 
             self.signal.add_signal(self.read..self.read + read as u64);
             self.read += read as u64;
