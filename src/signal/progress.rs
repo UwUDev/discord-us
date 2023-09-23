@@ -13,7 +13,6 @@ use crate::{
     },
 };
 
-#[derive(Clone)]
 pub struct ProgressSignal<T> {
     progression: Safe<T>,
 
@@ -21,6 +20,15 @@ pub struct ProgressSignal<T> {
 }
 
 unsafe impl<T> Send for ProgressSignal<T> {}
+
+impl<T> Clone for ProgressSignal<T> {
+    fn clone(&self) -> Self {
+        Self {
+            progression: self.progression.clone(),
+            status: self.status.clone(),
+        }
+    }
+}
 
 pub trait ProgressSignalAccessor<T> {
     fn get_progression(&self) -> &Safe<T>;

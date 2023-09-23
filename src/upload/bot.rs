@@ -70,7 +70,7 @@ impl BotUploader {
 }
 
 impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader {
-    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
+    fn do_upload(&mut self, reader: R, size: u64, signal: &mut ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
         let boundary = Self::generate_boundary();
 
         let payload_json = json!({
@@ -129,20 +129,20 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
         }
     }
 
-    struct FormDataStream<R: Read, S: AddSignaler<Range<u64>>> {
+    struct FormDataStream<'a, R: Read, S: AddSignaler<Range<u64>>> {
         reader: R,
-        signal: ProgressSignal<S>,
+        signal: &'a mut ProgressSignal<S>,
         read: u64,
         size: u64,
     }
 
-    impl<R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<R, S> {
+    impl<'a, R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<'a, R, S> {
         fn get_size(&self) -> u64 {
             self.size
         }
     }
 
-    impl<R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<R, S> {
+    impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<'a, R, S> {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             if !self.signal.is_running() {
                 return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
@@ -191,14 +191,14 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
                 subscription: AccountSubscription::Free,
             });
 
-            let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
+            let mut signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
             let mut file = File::open("test.mp4").unwrap();
             let len = file.metadata().unwrap().len();
 
             let start = std::time::Instant::now();
 
-            let url = uploader.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap();
+            let url = uploader.do_upload(&mut file, len, &mut signal).unwrap();
 
             let mut signal = signal.get_progression().access();
             signal.retrim_ranges();

@@ -170,6 +170,7 @@ impl<T> GetSignal<StoredSignal<T>> for StoredSignal<T> {
     }
 }
 
+#[derive(Clone)]
 pub struct DerivedSignal<T, D> {
     data: D,
     signal: T,

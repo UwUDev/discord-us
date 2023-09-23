@@ -85,7 +85,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
     fn next_uploader(&self, uploaders: &Vec<RefCell<PooledUploader<S, R>>>) -> Option<usize> {
         // First it should find a uploader with concurrency to the lowest
         // then it should find a uploader with the lowest cooldown
-        let mut mut_keys :Vec<usize>= Vec::new();
+        let mut mut_keys: Vec<usize> = Vec::new();
 
         for i in 0..uploaders.len() {
             let cooldown = &uploaders.get(i).unwrap().borrow().cooldown;
@@ -106,12 +106,11 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
         &self,
         reader: R,
         size: u64,
-        signal: ProgressSignal<S>,
+        signal: &mut ProgressSignal<S>,
     ) -> Result<UploaderCoolDownResponse<String>, Error> {
         // acquire lock on uploaders
         loop {
             let uploaders = self.uploaders.access();
-            println!("Acquired lock on uploaders");
 
             // find next best uploader
             let uploader_index = self.next_uploader(&uploaders);
@@ -185,7 +184,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploaderMaxSize for UploadPool<S, R> {
 }
 
 impl<S: AddSignaler<Range<u64>>, R: Read> Uploader<String, R, S> for UploadPool<S, R> {
-    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
+    fn do_upload(&mut self, reader: R, size: u64, signal: &mut ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
         self._do_upload(reader, size, signal)
     }
 }
@@ -207,9 +206,7 @@ mod test {
 
     #[test]
     pub fn test() {
-        let tokens = vec![
-        ""
-        ];
+        let tokens = std::env::var("TOKENS").map(|t| t.split(",").map(|s| s.to_string()).collect::<Vec<_>>()).unwrap();
 
         let mut pool = UploadPool::new();
 
@@ -221,39 +218,40 @@ mod test {
             }));
         }
 
-        // let files = vec![
-        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\FyGEeXCWYAQJQCs.jpg",
-        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\20221126_170921.jpg",
-        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\f12b7918d66c91ad115c3748547b1269.jpg",
-        //     "C:\\Users\\marti\\Downloads\\SHITPOST\\IMG_0656.png",
-        //     "C:\\Users\\marti\\Downloads\\we_live_we_love_we_lie_A2fAooXRmq8.webm",
-        //     "C:\\Users\\marti\\Downloads\\ayezlaref_2023-09-11-11-36-49_1694425009476.mp4",
-        // ];
-
 
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
         let mut join: Vec<JoinHandle<()>> = Vec::new();
-        let mut offset = 0;
-        for i in 0..30 {
-            let stream = StaticStream::from([10u8; 100].to_vec());
-            let len = stream.get_size();
+        const THREADS : usize = 10;
+        const PER_THREAD : usize = 2;
+        const SIZE : usize = 1<<16;
+
+        for j in 0..THREADS {
             let mut p = pool.clone();
-            let signal = signal.clone_with_offset(offset);
-            offset += len;
-            join.push(
-                std::thread::spawn(move || {
-                    let result = p.do_upload(stream, len, signal).unwrap();
-                    println!("Uploaded | result = {:?}", result.unwrap());
-                })
-            );
+            let mut signal = signal.clone();
+            join.push(std::thread::spawn(move || {
+                for i in 0..PER_THREAD {
+                    let stream = StaticStream::from([10u8; SIZE].to_vec());
+                    let len = stream.get_size();
+                    let result = p.do_upload(
+                        stream,
+                        len,
+                        &mut signal.clone_with_offset((((j*PER_THREAD) + i) * SIZE) as u64)
+                    ).unwrap();
+                    println!("Uploaded thread={} | result = {:?}", j, result.unwrap());
+                }
+            }));
         }
+
 
         for j in join {
             j.join().unwrap();
         }
 
         let mut signal = signal.get_progression().access();
+        //signal.retrim_ranges();
+        println!("Uploaded | signal = {:?}", signal.get_signal_data());
+
         signal.retrim_ranges();
         println!("Uploaded | signal = {:?}", signal.get_signal_data());
     }

@@ -41,6 +41,10 @@ impl StoredSignal<Vec<Range<u64>>> {
         let mut current_range = ranges[0].clone();
 
         for range in ranges.iter() {
+            if range.start == range.end {
+                continue;
+            }
+
             if range.start <= current_range.end {
                 current_range.end = range.end;
             } else {

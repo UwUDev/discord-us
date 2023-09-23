@@ -150,16 +150,16 @@ impl AccountUploader {
 
 
 impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUploader {
-    fn do_upload(&mut self, reader: R, size: u64, signal: ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
+    fn do_upload(&mut self, reader: R, size: u64, signal: &mut ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
         let (upload_url, upload_filename) = self.request_attachment_upload_url(size)?;
 
-        struct ReaderWrapper<R: Read, S: AddSignaler<Range<u64>>> {
+        struct ReaderWrapper<'a, R: Read, S: AddSignaler<Range<u64>>> {
             reader: R,
-            signal: ProgressSignal<S>,
+            signal: &'a mut ProgressSignal<S>,
             read: u64,
         }
 
-        impl<R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<R, S> {
+        impl<'a , R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<'a, R, S> {
             fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
                 if !self.signal.is_running() {
                     return Err(Error::new(std::io::ErrorKind::Other, "Upload stopped"));
@@ -237,7 +237,7 @@ mod test {
 
         let start = std::time::Instant::now();
 
-        let url = upload.do_upload(&mut file, len, signal.clone_with_offset(0)).unwrap().unwrap();
+        let url = upload.do_upload(&mut file, len, &mut signal.clone_with_offset(0)).unwrap().unwrap();
 
         let mut signal = signal.get_progression().access();
         signal.retrim_ranges();
