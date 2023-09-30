@@ -182,6 +182,8 @@ impl <R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Clone for Mu
     }
 }
 
+unsafe impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Send for MultiChunkedStream<R, C> {}
+
 impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> From<Vec<R>> for MultiChunkedStream<R, C> {
     fn from(value: Vec<R>) -> Self {
         Self {
@@ -334,6 +336,24 @@ impl Read for StaticStream {
         self.cursor += to_read;
 
         Ok(to_read)
+    }
+}
+
+pub struct ReadProxy {
+    reader: Box<dyn Read>,
+}
+
+impl Into<ReadProxy> for Box<dyn Read + Send + Sync> {
+    fn into(self) -> ReadProxy {
+        ReadProxy {
+            reader: self,
+        }
+    }
+}
+
+impl Read for ReadProxy {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.reader.read(buf)
     }
 }
 

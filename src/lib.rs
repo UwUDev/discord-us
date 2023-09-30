@@ -12,6 +12,7 @@ pub mod _signal;
 pub mod pack;
 pub mod fs;
 pub mod utils;
+pub mod download;
 
 /// Trait for getting size of something
 pub trait Size {

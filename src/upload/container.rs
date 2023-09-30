@@ -193,16 +193,20 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
 
         let stream: ChunkedRead<crypt::StreamCipher<R>> = container.encrypt_stream(read).into();
 
-        if let Ok(url) = self.uploader.do_upload(
+        match self.uploader.do_upload(
             stream,
             padded_range.get_size(),
             &mut self.progress_signal.clone().into(),
         ) {
-            self.containers.access().push(container.into_container(url.unwrap()));
-        } else {
-            let mut remaining_containers = self.remaining_containers.access();
-            eprintln!("Error uploading range {:?}, retrying", range);
-            remaining_containers.push_back(range); // if an error occured: retry
+            Ok(url) => {
+                self.containers.access().push(container.into_container(url.unwrap()));
+            }
+            Err(e) => {
+                let mut remaining_containers = self.remaining_containers.access();
+                eprintln!("{:?}", e);
+                eprintln!("Error uploading range {:?}, retrying", range);
+                remaining_containers.push_back(range); // if an error occured: retry
+            }
         }
     }
 }
@@ -210,6 +214,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
 #[cfg(test)]
 mod test {
     use std::ops::{Range};
+    use std::path::PathBuf;
     use crate::{
         upload::{
             pool::{UploadPool},
@@ -226,13 +231,21 @@ mod test {
         },
         fs::{
             dir::{scan_files, DirEntry, ChunkedFileReader},
+            IntoTree,
+            AsPathVec,
         },
         utils::{
             read::{MultiChunkedStream},
-            safe::{SafeAccessor}
+            safe::{SafeAccessor},
         },
         Size,
+        pack::{
+            Waterfall,
+            SerializableWaterfall,
+        },
     };
+    use crate::signal::progress::ProgressSignalAccessor;
+    use crate::signal::StaticSignal;
 
     #[test]
     pub fn test() {
@@ -250,7 +263,11 @@ mod test {
 
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
-        let f = scan_files(vec!["./cli/JellyfinMediaPlayer-1.9.1-windows-x64.exe".into()]).unwrap();
+        let f = scan_files(vec!["./src".into()]).unwrap();
+
+        let path: PathBuf = "./src".into();
+
+        let tree = (&f).into_tree(&path.canonicalize().unwrap().as_path_vec());
 
         let r: MultiChunkedStream<DirEntry, ChunkedFileReader> = f.into();
 
@@ -266,11 +283,11 @@ mod test {
 
         let mut s = signal.clone();
 
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-            println!("Stopping");
-            s.stop();
-        });
+        // std::thread::spawn(move || {
+        //     std::thread::sleep(std::time::Duration::from_secs(5));
+        //     println!("Stopping");
+        //     s.stop();
+        // });
 
         let r = u.upload(r.clone(), r.get_size(), &mut signal.clone().into()).unwrap();
 
@@ -278,9 +295,18 @@ mod test {
 
         println!("Containers: {:?}", r);
         println!("Remaining: {:?}", v);
+        let mut p = signal.get_progression().access();
+        p.retrim_ranges();
+        println!("Signal data {:?}", p.get_signal_data());
 
         for a in v.iter() {
             println!("Size: {}", a.get_size());
         }
+
+        let file = std::fs::File::create("test.json").unwrap();
+
+        let w = Waterfall::new(tree, r);
+
+        serde_json::to_writer_pretty(file, &w.as_serializable()).unwrap();
     }
 }

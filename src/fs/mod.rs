@@ -13,7 +13,7 @@ use serde::{
 
 pub mod dir;
 
-type Ref<T> = Rc<RefCell<T>>;
+pub type Ref<T> = Rc<RefCell<T>>;
 type OptionalRef<T> = Option<Ref<T>>;
 
 pub struct FsNode<T> {

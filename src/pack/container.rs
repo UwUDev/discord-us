@@ -84,7 +84,7 @@ impl PartialContainer {
         })
     }
 
-    pub fn encrypt_stream<R: Read> (&self, reader: R) -> StreamCipher<R> {
+    pub fn encrypt_stream<R: Read>(&self, reader: R) -> StreamCipher<R> {
         StreamCipher::new(reader, self.meta.chunk_size as usize, self.cipher.clone())
     }
 
@@ -180,7 +180,7 @@ impl ChunkSplitter {
         let chunks_within = size / (self.chunk_size - self.pad_size);
 
         let start = range.start + chunks_before * self.pad_size;
-        let mut end = range.end + chunks_within * self.pad_size;
+        let mut end = range.end + (chunks_before + chunks_within) * self.pad_size;
 
         if end % self.chunk_size != 0 {
             end += self.chunk_size - (end % self.chunk_size);
