@@ -196,6 +196,7 @@ mod test {
 
     use serde_json;
     use crate::utils::read::LazyOpen;
+    use crate::utils::limit::RateLimiterTrait;
 
     use std::os::windows::fs::FileExt;
 
@@ -217,9 +218,15 @@ mod test {
 
         let l = stream.get_size() / t_count;
 
+        let n = std::time::Instant::now();
+
+        let limiter = crate::utils::limit::RateLimiter::tokens_per_seconds(10.0 * 1024.0 * 1024.0);
+
         for i in 0..t_count {
             let range = i * l..stream.get_size().min((i + 1) * l);
             let s = stream.clone();
+
+            let mut limiter = limiter.clone();
 
             handles.push(std::thread::spawn(move || {
                 println!("Downloading range {:?}", range);
@@ -239,6 +246,7 @@ mod test {
                     read += c as u64;
                     // println!("position to {} (+= {})", f.stream_position().unwrap(), c);
                     f.write(&buf[0..c]).unwrap();
+                    limiter.remove_tokens(c as f64).unwrap();
                 }
 
                 println!("Wrote from {} to {}", range.start, range.start + read);
