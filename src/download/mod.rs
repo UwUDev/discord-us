@@ -101,11 +101,14 @@ impl LazyOpen<OpenedC> for ContainerOpener {
 impl RangeLazyOpen<OpenedC> for ContainerOpener {
     fn open_with_range(&self, range: Range<u64>) -> OpenedC {
         //#[cfg(test)]
-        //println!("Opening container ({}-{}) (#size: {}) with range {:?}", self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.container.meta.get_size(), range);
+        //println!("Opening container  1({}-{}) (#size: {}) with range {:?}", self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.container.meta.get_size(), range);
 
         let chunk_count_end = range.end / (self.get_chunk_size());
         let chunk_count_start = range.start / (self.get_chunk_size());
-        let mut range = (range.start + chunk_count_start * crypt::METADATA_SIZE)..(range.end + chunk_count_end * crypt::METADATA_SIZE);
+        let range = (range.start + chunk_count_start * crypt::METADATA_SIZE)..(range.end + chunk_count_end * crypt::METADATA_SIZE);
+
+        //#[cfg(test)]
+        //println!("Opening container  2({}-{}) (#size: {}) with range {:?} -> chunk_count_start: {}, chunk_count_end: {}", self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.container.meta.get_size(), range,chunk_count_start,chunk_count_end);
 
         let key = self.key_derivator.derive_password(&self.container.meta.salt);
 
@@ -198,8 +201,6 @@ mod test {
     use crate::utils::read::LazyOpen;
     use crate::utils::limit::RateLimiterTrait;
 
-    use std::os::windows::fs::FileExt;
-
     #[test]
     pub fn test() {
         let serializable_waterfall: SerializableWaterfall = serde_json::from_reader(std::fs::File::open("test.json").unwrap()).unwrap();
@@ -214,16 +215,16 @@ mod test {
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
 
-        let t_count = 3;
+        let t_count = 5;
 
         let l = stream.get_size() / t_count;
 
         let n = std::time::Instant::now();
 
         let limiter = crate::utils::limit::RateLimiter::tokens_per_seconds(10.0 * 1024.0 * 1024.0);
-
-        for i in 0..t_count {
-            let range = i * l..stream.get_size().min((i + 1) * l);
+        println!("Thread count: {}", t_count);
+        for i in 0..t_count+1 { // the +1 is to be sure to download the last part if the division is not exact
+            let range = stream.get_size().min(i * l)..stream.get_size().min((i + 1) * l);
             let s = stream.clone();
 
             let mut limiter = limiter.clone();
@@ -252,7 +253,7 @@ mod test {
                 println!("Wrote from {} to {}", range.start, range.start + read);
             }));
 
-           // handles.pop().unwrap().join().unwrap();
+            // handles.pop().unwrap().join().unwrap();
         }
 
         for h in handles {
