@@ -1,3 +1,17 @@
+# Project killed by Discord
+
+This project was made to abuse discord's storage system (aka Google cloud) with a highly secured system.
+
+Thanks to [theking90000](https://github.com/theking90000) for making this project a 100 times better :)
+
+This project was meant to be a torrent like system and was working tbh really well, after uploading thousands of gigabytes of data, discord decided to add extra "security" and this is why your discord files links has an expiration timestamp on it :c
+
+_Maybe a Terrabyte idk but now it's a dead project_
+
+**You should take a look at "improvemets" branch**
+
+<br><br><br>
+
 # Discord Unlimited Storage
 
 ## What is this?
