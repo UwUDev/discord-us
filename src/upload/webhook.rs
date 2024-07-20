@@ -1,63 +1,38 @@
-use std::{
-    ops::Range,
-    io::{Read, Error},
-    time::{Duration},
-};
-use rand::{distributions::Alphanumeric, Rng};
+use std::io::{Error, Read};
+use std::ops::Range;
+use std::time::Duration;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use serde_json::json;
-use crate::{
-    upload::{
-        Uploader,
-        UploaderMaxSize,
-        UploaderCoolDownResponse,
-        account::{
-            AccountCredentials,
-        },
-    },
-    signal::{
-        AddSignaler,
-        progress::{ProgressSignal, ProgressSignalTrait},
-    },
-    utils::{
-        read::{
-            StaticStream,
-        },
-        limit::{
-            CoolDownMs,
-        },
-    },
-    Size,
-};
-
 use ureq::{Agent, AgentBuilder};
+use crate::signal::AddSignaler;
+use crate::signal::progress::{ProgressSignal, ProgressSignalTrait};
+use crate::upload::account::{AccountCredentials, AccountUploader};
+use crate::upload::{Uploader, UploaderCoolDownResponse, UploaderMaxSize};
+use crate::utils::read::StaticStream;
+
+
+const MAX_WEBHOOK_SIZE: u64 = 24 * 1024 * 1024;
 
 #[derive(Clone)]
-pub struct BotUploader {
+pub struct WebhookUploader {
     credentials: AccountCredentials,
-
     agent: Agent,
+    include_token: bool,
 }
 
-impl UploaderMaxSize for BotUploader {
-    fn get_max_size(&self) -> u64 {
-        self.credentials.subscription.get_max_upload_size() as u64
-    }
-}
-
-impl CoolDownMs for BotUploader {
-    fn get_cool_down(&self) -> (f64, u32) {
-        return (0.0, 5);
-    }
-}
-
-impl BotUploader {
+impl WebhookUploader {
     pub fn new(credentials: AccountCredentials) -> Self {
         let agent = AgentBuilder::new()
             .timeout_read(Duration::from_secs(60))
             .timeout_write(Duration::from_secs(60 * 60))
             .build();
 
-        Self { credentials, agent }
+        Self { credentials, agent, include_token: false }
+    }
+
+    pub fn include_token(&mut self, include: bool) {
+        self.include_token = include
     }
 
     fn generate_boundary() -> String {
@@ -69,7 +44,13 @@ impl BotUploader {
     }
 }
 
-impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader {
+impl UploaderMaxSize for WebhookUploader {
+    fn get_max_size(&self) -> u64 {
+        MAX_WEBHOOK_SIZE
+    }
+}
+
+impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for WebhookUploader {
     fn do_upload(&mut self, reader: R, size: u64, signal: &mut ProgressSignal<S>) -> Result<UploaderCoolDownResponse<String>, Error> {
         let boundary = Self::generate_boundary();
 
@@ -89,19 +70,18 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             )
         ).chain(StaticStream::from(
             format!("\r\n--{}\r\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"data.bin\"\r\n\r\n", boundary.clone()).into()
-        )).chain(FormDataStream {
+        )).chain(crate::upload::bot::FormDataStream {
             reader,
-            signal: signal,
+            signal,
             read: 0,
             size,
         }).chain(StaticStream::from(
             format!("\r\n--{}--\r\n", boundary.clone()).into()
         ));
 
-        let url = format!("https://discord.com/api/v9/channels/{}/messages", self.credentials.channel_id);
+        let url = format!("https://discord.com/api/webhooks/{}/{}?wait=true", self.credentials.channel_id, self.credentials.access_token);
 
         let response = self.agent.post(&url)
-            .set("Authorization", format!("Bot {}", &self.credentials.access_token).as_str())
             .set("Content-Type", format!("multipart/form-data; boundary={}", boundary).as_str())
             .send(&mut body)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
@@ -133,41 +113,6 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
     }
 }
 
-pub(crate) struct FormDataStream<'a, R: Read, S: AddSignaler<Range<u64>>> {
-    pub(crate) reader: R,
-    pub(crate) signal: &'a mut ProgressSignal<S>,
-    pub(crate) read: u64,
-    pub(crate) size: u64,
-}
-
-impl<'a, R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<'a, R, S> {
-    fn get_size(&self) -> u64 {
-        self.size
-    }
-}
-
-impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<'a, R, S> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        if !self.signal.is_running() {
-            println!("Interrupted");
-            return Ok(0);
-            //return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
-        }
-
-        if self.read >= self.size {
-            return Ok(0);
-        }
-
-        let to_read = std::cmp::min(buf.len(), (self.size - self.read) as usize);
-
-        let read = self.reader.read(&mut buf[..to_read])?;
-
-        self.signal.add_signal(self.read..self.read + read as u64);
-        self.read += read as u64;
-        Ok(read)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::{upload::{
@@ -175,9 +120,7 @@ mod test {
             AccountCredentials,
             AccountSubscription,
         },
-        bot::{
-            BotUploader,
-        },
+        webhook::{WebhookUploader},
         Uploader,
     }, signal::{
         StoredSignal,
@@ -196,8 +139,8 @@ mod test {
     use crate::utils::safe::SafeAccessor;
 
     #[test]
-    pub fn test_account_uploader() {
-        let mut uploader = BotUploader::new(AccountCredentials {
+    pub fn test_webhook() {
+        let mut uploader = WebhookUploader::new(AccountCredentials {
             channel_id: 0,
             access_token: "//".to_string(),
             subscription: AccountSubscription::Free,

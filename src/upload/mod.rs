@@ -2,6 +2,7 @@ pub mod account;
 pub mod pool;
 pub mod bot;
 pub mod container;
+pub mod webhook;
 
 use std::{
     io::{Read, Error},
