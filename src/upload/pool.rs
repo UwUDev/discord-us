@@ -46,7 +46,7 @@ pub struct PooledUploader<S: AddSignaler<Range<u64>>, R: Read> {
 impl<S: AddSignaler<Range<u64>>, R: Read> PooledUploader<S, R> {
     pub fn new<U: Uploader<String, R, S> + CoolDownMs + Clone + 'static>(uploader: U) -> Self {
         Self {
-            cooldown: uploader.create_cooldown_wait(),
+            cooldown: U::create_cooldown_wait(),
             max_size: uploader.get_max_size(),
             uploader: Box::new(uploader),
 
@@ -83,8 +83,8 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
 
 impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
     fn next_uploader(&self, uploaders: &Vec<RefCell<PooledUploader<S, R>>>) -> Option<usize> {
-        // First it should find a uploader with concurrency to the lowest
-        // then it should find a uploader with the lowest cooldown
+        // First it should find an uploader with concurrency to the lowest
+        // then it should find an uploader with the lowest cooldown
         let mut mut_keys: Vec<usize> = Vec::new();
 
         for i in 0..uploaders.len() {

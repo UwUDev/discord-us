@@ -1,10 +1,12 @@
 pub mod http;
+pub mod webhook;
 
 use std::{
     io::{Read, Result},
     ops::{Range},
 };
-
+use std::io::Error;
+use url::Url;
 use crate::{
     pack::{
         Size,
@@ -46,6 +48,7 @@ use crate::{
         }
     },
 };
+use crate::download::webhook::{is_valid_webhook, WebhookResolver};
 
 pub trait Download<R: Read> {
     fn download(&self) -> Result<R>;
@@ -56,6 +59,8 @@ pub struct ContainerOpener {
     container: Container,
     signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>,
     key_derivator: KeyDerivator,
+
+    webhook_resolver: Option<WebhookResolver>,
 }
 
 pub struct OpenedContainer<T: Read, S: AddSignaler<Range<u64>>> {
@@ -69,13 +74,40 @@ pub struct OpenedContainer<T: Read, S: AddSignaler<Range<u64>>> {
 type SignalRange = DerivedSignal<Safe<StoredSignal<Vec<Range<u64>>>>, u64>;
 type OpenedC = OpenedContainer<ReadProxy, SignalRange>;
 
+
 impl ContainerOpener {
-    pub fn new(container: Container, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>, password: String) -> Self {
+    pub fn new(container: Container, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>, password: String, resolver: Option<WebhookResolver>) -> Self {
         let key_derivator = KeyDerivator::from_password(password);
         Self {
             container,
             signal,
             key_derivator,
+            webhook_resolver: resolver,
+        }
+    }
+
+    fn get_downloader(&self, url: String, range: Range<u64>) -> Result<impl Download<ReadProxy>> {
+        let u = Url::parse(&url).map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
+
+        match u.scheme() {
+            "https" => Ok((HttpDownloader::new(url, range))),
+            "webhook" => {
+                let q = u.query_pairs().find(|(k, _)| k == "url").unwrap().1;
+                let url = Url::parse(&q).map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
+                if is_valid_webhook(&url) {
+                    Ok(HttpDownloader::new(url.to_string(), range))
+                } else {
+                    match &self.webhook_resolver {
+                        Some(resolver) => {
+                            let url = resolver.resolve(u)?;
+                            Ok(HttpDownloader::new(url, range))
+                        }
+                        None => Err(Error::new(std::io::ErrorKind::Other, "Webhook expired"))
+                    }
+                }
+                //Err(Error::new(std::io::ErrorKind::Other, "Unsupported protocol"))
+            }
+            _ => Err(Error::new(std::io::ErrorKind::Other, "Unsupported protocol")),
         }
     }
 }
@@ -115,7 +147,9 @@ impl RangeLazyOpen<OpenedC> for ContainerOpener {
         let cipher = ChunkCipher::new(&key);
 
         // check protocol ? for the moment, only http
-        let downloader = HttpDownloader::new(self.container.public_url.clone(), range.clone());
+
+        let downloader = self.get_downloader(self.container.public_url.clone(), range.clone()).unwrap();
+        //let downloader = HttpDownloader::new(self.container.public_url.clone(), range.clone());
 
         let stream = downloader.download().unwrap();
 
@@ -168,16 +202,22 @@ impl<T: Read, S: AddSignaler<Range<u64>>> Chunked for OpenedContainer<T, S> {
 pub struct ContainerDownloader {
     containers: Vec<Container>,
     password: String,
+    webhook_resolver: Option<WebhookResolver>,
 }
 
 impl ContainerDownloader {
     pub fn new(containers: Vec<Container>, password: String) -> Self {
-        Self { containers, password }
+        Self { containers, password, webhook_resolver: None }
+    }
+
+    pub fn with_webhook_resolver(mut self, resolver: WebhookResolver) -> Self {
+        self.webhook_resolver = Some(resolver);
+        self
     }
 
     pub fn to_stream(&self, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>) -> MultiChunkedStream<ContainerOpener, OpenedC> {
         let containers: Vec<_> = self.containers.iter().map(|x|
-            ContainerOpener::new(x.clone(), signal.clone(), self.password.clone())
+        ContainerOpener::new(x.clone(), signal.clone(), self.password.clone(), self.webhook_resolver.clone())
         ).collect();
 
         MultiChunkedStream::from(containers)
@@ -198,6 +238,7 @@ mod test {
     use std::thread::JoinHandle;
 
     use serde_json;
+    use crate::download::webhook::WebhookResolver;
     use crate::utils::read::LazyOpen;
     use crate::utils::limit::RateLimiterTrait;
 
@@ -209,21 +250,24 @@ mod test {
 
         let mut signal = crate::signal::progress::ProgressSignal::<crate::signal::StoredSignal<Vec<std::ops::Range<u64>>>>::new();
 
-        let mut downloader = ContainerDownloader::new(waterfall.containers, "password".to_string());
+        let webhook_resolver = WebhookResolver::new();
+
+        let mut downloader = ContainerDownloader::new(waterfall.containers, "password".to_string()).with_webhook_resolver(webhook_resolver);
+
 
         let stream = downloader.to_stream(signal.clone());
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
 
-        let t_count = 5;
+        let t_count = 1;
 
         let l = stream.get_size() / t_count;
 
         let n = std::time::Instant::now();
 
-        let limiter = crate::utils::limit::RateLimiter::tokens_per_seconds(10.0 * 1024.0 * 1024.0);
+        let limiter = crate::utils::limit::RateLimiter::tokens_per_seconds(500.0 * 1024.0 * 1024.0);
         println!("Thread count: {}", t_count);
-        for i in 0..t_count+1 { // the +1 is to be sure to download the last part if the division is not exact
+        for i in 0..t_count { // the +1 is to be sure to download the last part if the division is not exact
             let range = stream.get_size().min(i * l)..stream.get_size().min((i + 1) * l);
             let s = stream.clone();
 

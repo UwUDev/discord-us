@@ -52,7 +52,7 @@ impl UploaderMaxSize for WebhookUploader {
 }
 
 impl CoolDownMs for WebhookUploader {
-    fn get_cool_down(&self) -> (f64, u32) {
+    fn get_cool_down() -> (f64, u32) {
         return (0.0, 5);
     }
 }
@@ -107,7 +107,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for WebhookUplo
 
 
         let data = response.into_json::<serde_json::Value>()?;
-
+        let message_id = data["id"].as_str().unwrap();
         let file_url = data["attachments"][0]["url"]
             .as_str()
             .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_url not found"))?;
@@ -119,9 +119,11 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for WebhookUplo
         // if webhook token is needed format the url accordingly
         let url = if self.include_token {
             let encoded = url::form_urlencoded::byte_serialize(file_url.as_bytes()).collect::<String>();
-            format!("webhook://{}?url={}",
-                               self.credentials.access_token,
-                               encoded)
+            format!("webhook://{}?webhook_id={}&token={}&url={}",
+                    message_id,
+                    self.credentials.channel_id,
+                    self.credentials.access_token,
+                    encoded)
         } else {
             file_url.to_string()
         };

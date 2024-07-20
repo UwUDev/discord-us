@@ -45,7 +45,7 @@ impl UploaderMaxSize for BotUploader {
 }
 
 impl CoolDownMs for BotUploader {
-    fn get_cool_down(&self) -> (f64, u32) {
+    fn get_cool_down() -> (f64, u32) {
         return (0.0, 5);
     }
 }

@@ -264,10 +264,10 @@ impl CoolDown {
 
 pub trait CoolDownMs {
     /// Get the cooldown in milliseconds.
-    fn get_cool_down(&self) -> (f64, u32);
+    fn get_cool_down() -> (f64, u32);
 
-    fn create_cooldown_wait(&self) -> CoolDown {
-        let (cool_down, concurrency) = self.get_cool_down();
+    fn create_cooldown_wait() -> CoolDown {
+        let (cool_down, concurrency) = Self::get_cool_down();
         return if cool_down < 0.0 {
             CoolDown::Void()
         } else {
