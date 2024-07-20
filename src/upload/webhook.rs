@@ -9,6 +9,7 @@ use crate::signal::AddSignaler;
 use crate::signal::progress::{ProgressSignal, ProgressSignalTrait};
 use crate::upload::account::{AccountCredentials, AccountUploader};
 use crate::upload::{Uploader, UploaderCoolDownResponse, UploaderMaxSize};
+use crate::utils::limit::CoolDownMs;
 use crate::utils::read::StaticStream;
 
 
@@ -47,6 +48,12 @@ impl WebhookUploader {
 impl UploaderMaxSize for WebhookUploader {
     fn get_max_size(&self) -> u64 {
         MAX_WEBHOOK_SIZE
+    }
+}
+
+impl CoolDownMs for WebhookUploader {
+    fn get_cool_down(&self) -> (f64, u32) {
+        return (0.0, 5);
     }
 }
 
@@ -109,7 +116,17 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for WebhookUplo
             return Err(Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
         }
 
-        Ok(UploaderCoolDownResponse::CoolDown(file_url.into(), (reset_after * 1000.0) as u64, remaining))
+        // if webhook token is needed format the url accordingly
+        let url = if self.include_token {
+            let encoded = url::form_urlencoded::byte_serialize(file_url.as_bytes()).collect::<String>();
+            format!("webhook://{}?url={}",
+                               self.credentials.access_token,
+                               encoded)
+        } else {
+            file_url.to_string()
+        };
+
+        Ok(UploaderCoolDownResponse::CoolDown(url, (reset_after * 1000.0) as u64, remaining))
     }
 }
 
@@ -145,6 +162,7 @@ mod test {
             access_token: "//".to_string(),
             subscription: AccountSubscription::Free,
         });
+        uploader.include_token(true);
 
         let mut signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 

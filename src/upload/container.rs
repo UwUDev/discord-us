@@ -246,6 +246,65 @@ mod test {
     };
     use crate::signal::progress::ProgressSignalAccessor;
     use crate::signal::StaticSignal;
+    use crate::upload::webhook::WebhookUploader;
+    use crate::utils::read::StaticStream;
+
+    #[test]
+    pub fn test_webhook() {
+        let tokens = std::env::var("TOKENS").map(|t| t.split(",").map(|s| s.to_string()).collect::<Vec<_>>()).unwrap();
+        let mut pool = UploadPool::new();
+        for token in tokens {
+            let (id, token) = token.split_once(":").unwrap();
+            let id = id.parse::<u64>().unwrap();
+            println!("ID: {}, Token: {}", id, token);
+            let mut up = WebhookUploader::new(AccountCredentials {
+                channel_id: id,
+                access_token: token.into(),
+                subscription: AccountSubscription::Free,
+            });
+            up.include_token(true);
+            pool.add_uploader(up);
+        }
+
+        let mut uploader = ContainerUploader::new(24*1024*1024,
+                                                  1 << 16, // 65536 bytes
+                                              "password".into(),
+                                                  pool,
+                                                  5);
+
+        let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
+
+        let f = scan_files(vec!["./src".into()]).unwrap();
+
+        let path: PathBuf = "./src".into();
+
+        let tree = (&f).into_tree(&path.canonicalize().unwrap().as_path_vec());
+
+        let r: MultiChunkedStream<DirEntry, ChunkedFileReader> = f.into();
+
+        println!("Size: {}", r.get_size());
+        let start = std::time::Instant::now();
+
+        let ss = signal.clone();
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let mut p = ss.get_progression().access();
+                p.retrim_ranges();
+                println!("Prog {:?}", p.get_signal_data());
+            }
+        });
+
+        let r = uploader.upload(r.clone(), r.get_size(), &mut signal.clone().into()).unwrap();
+        println!("Elapsed: {:?}", start.elapsed());
+        println!("Containers: {:?}", r);
+
+        let file = std::fs::File::create("test.json").unwrap();
+
+        let w = Waterfall::new(tree, r);
+
+        serde_json::to_writer_pretty(file, &w.as_serializable()).unwrap();
+    }
 
     #[test]
     pub fn test() {
