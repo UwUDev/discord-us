@@ -67,7 +67,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         }
     }
 
-    fn upload<X: RangeLazyOpen<R> + Clone>(&mut self, reader: X, size: u64, signal: &mut ProgressSignal<S>) -> Result<Vec<Container>, Error> {
+    pub fn upload<X: RangeLazyOpen<R> + Clone>(&mut self, reader: X, size: u64, signal: &mut ProgressSignal<S>) -> Result<Vec<Container>, Error> {
         {
             let mut remaining_containers = self.remaining_containers.access();
 

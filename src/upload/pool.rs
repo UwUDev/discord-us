@@ -36,7 +36,7 @@ clone_trait_object!(<V, R, S> ClonableUploader<V, R, S> where R: Read, S: AddSig
 impl<T: DynClone + Uploader<V, R, S>, V, R: Read, S: AddSignaler<Range<u64>>> ClonableUploader<V, R, S> for T {}
 
 pub struct PooledUploader<S: AddSignaler<Range<u64>>, R: Read> {
-    uploader: Box<dyn ClonableUploader<String, R, S>>,
+    uploader: Box<dyn ClonableUploader<String, R, S>+Send>,
     cooldown: CoolDown,
     max_size: u64,
 
@@ -44,7 +44,7 @@ pub struct PooledUploader<S: AddSignaler<Range<u64>>, R: Read> {
 }
 
 impl<S: AddSignaler<Range<u64>>, R: Read> PooledUploader<S, R> {
-    pub fn new<U: Uploader<String, R, S> + CoolDownMs + Clone + 'static>(uploader: U) -> Self {
+    pub fn new<U: Uploader<String, R, S> + Send + CoolDownMs + Clone + 'static>(uploader: U) -> Self {
         Self {
             cooldown: U::create_cooldown_wait(),
             max_size: uploader.get_max_size(),
@@ -76,7 +76,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
         }
     }
 
-    pub fn add_uploader<U: Uploader<String, R, S> + CoolDownMs + Clone + 'static>(&mut self, uploader: U) {
+    pub fn add_uploader<U: Uploader<String, R, S> + CoolDownMs + Clone + Send + 'static>(&mut self, uploader: U) {
         self.uploaders.access().push(RefCell::new(PooledUploader::new(uploader)));
     }
 }
