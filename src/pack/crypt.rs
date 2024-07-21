@@ -1,3 +1,4 @@
+use std::f32::consts::E;
 use std::io::Read;
 use aes_gcm::{
     AeadInPlace, Aes256Gcm, KeyInit, AeadCore,
@@ -109,6 +110,10 @@ impl<R: Read> Chunked for StreamCipher<R> {
             }
 
             read += r;
+        }
+
+        if read == 0 {
+            return None;
         }
 
         self.cipher.encrypt(&mut chunk).unwrap();

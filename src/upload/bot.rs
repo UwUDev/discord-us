@@ -162,6 +162,10 @@ impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<'a, R, S> 
 
         let read = self.reader.read(&mut buf[..to_read])?;
 
+        if read == 0 {
+            return Ok(0);
+        }
+
         self.signal.add_signal(self.read..self.read + read as u64);
         self.read += read as u64;
         Ok(read)

@@ -1,6 +1,9 @@
 use std::{io::{Error, Read}, ops::{Range}, thread::{
     ScopedJoinHandle
 }, collections::VecDeque, thread};
+use std::ops::Deref;
+use std::sync::{Arc, Barrier, MutexGuard};
+use std::thread::sleep;
 use crate::{
     utils::{
         safe::{Safe, SafeAccessor},
@@ -29,7 +32,10 @@ use crate::{
     },
     Size,
 };
-
+use crate::pack::crypt::METADATA_SIZE;
+use crate::signal::bool::SafeBoolSignal;
+use crate::signal::{Signaler, SignalValue};
+use crate::utils::read::LazyOpen;
 
 pub struct ContainerUploader<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Read, S: AddSignaler<Range<u64>>> {
     container_size: u64,
@@ -79,6 +85,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
 
         thread::scope(|s| {
             let mut join_handles: Vec<ScopedJoinHandle<'_, ()>> = Vec::new();
+            let mut running = SafeBoolSignal::new(false);
 
             for _ in 0..self.thread_count {
                 let mut worker_thread = WorkerThread::new(
@@ -89,6 +96,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
                     self.containers.clone(),
                     ChunkSplitter::new(self.chunk_size, crypt::METADATA_SIZE, self.container_size),
                     self.password.clone(),
+                    running.clone(),
                 );
 
 
@@ -104,6 +112,199 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
 
 
         Ok(self.containers.access().clone())
+    }
+}
+
+impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<SeqReader<R>>>, S> + Clone, R: Read, S: AddSignaler<Range<u64>>> ContainerUploader<U, SeqReader<R>, S> {
+    /// Upload sequential is a less optimized version of upload
+    /// taking only a sequential stream as input and needs buffering to improve operation speeds
+    pub fn upload_seq(&mut self, reader: R, signal: &mut ProgressSignal<S>) -> Result<Vec<Container>, Error> {
+        thread::scope(|s| {
+            let mut join_handles: Vec<ScopedJoinHandle<'_, ()>> = Vec::new();
+            let mut running = SafeBoolSignal::new(true);
+
+            let read_opener = SeqReaderOpener {
+                pos: Safe::wrap(0),
+                stream: Safe::wrap(reader),
+                lock: SafeBoolSignal::new(false),
+                end: SafeBoolSignal::new(false),
+                payload_size: (self.chunk_size as usize - METADATA_SIZE as usize),
+                end_at: Safe::wrap(0),
+            };
+
+            for _ in 0..self.thread_count {
+                let mut worker_thread = WorkerThread::new(
+                    self.uploader.clone(),
+                    read_opener.clone(),
+                    self.remaining_containers.clone(),
+                    signal.clone(),
+                    self.containers.clone(),
+                    ChunkSplitter::new(self.chunk_size, crypt::METADATA_SIZE, self.container_size),
+                    self.password.clone(),
+                    running.clone(),
+                );
+
+
+                join_handles.push(s.spawn(move || {
+                    worker_thread.run();
+                }));
+            }
+
+            let mut pos = 0;
+            let chunk_splitter = ChunkSplitter::new(self.chunk_size, crypt::METADATA_SIZE, self.container_size);
+            loop {
+                if !signal.is_running() || read_opener.end.get_value() {
+                    #[cfg(test)]
+                    println!("Stopping");
+
+                    break;
+                }
+                let locked = read_opener.lock.get_value();
+                if !locked {
+                    let mut remaining_containers = self.remaining_containers.access();
+                    #[cfg(test)]
+                    println!("Checking if empty | end {} | containersize {} | pos {}", read_opener.end.get_value(), remaining_containers.len(), pos);
+                    if *read_opener.pos.access() >= pos as u64 {
+                        if remaining_containers.is_empty() {
+                            #[cfg(test)]
+                            println!("Adding new range {:?}", pos..(pos + chunk_splitter.max_payload_size()));
+                            remaining_containers.push_back(
+                                pos..(pos + chunk_splitter.max_payload_size())
+                            );
+                            pos += chunk_splitter.max_payload_size();
+                        }
+                    }
+                }
+                sleep(std::time::Duration::from_millis(50));
+            }
+            running.signal(false);
+
+            for join_handle in join_handles {
+                let _ = join_handle.join();
+            }
+
+            let end_at = read_opener.end_at.access();
+
+            let mut containers = self.containers.access();
+            let l = containers.len();
+            containers.sort_by(|a, b| a.meta.bytes_range.start.cmp(&b.meta.bytes_range.start));
+            if l > 0 {
+                let last = containers.get_mut(l - 1).unwrap();
+                // TODO: update byterange
+                let chunk_count = ((*end_at - last.meta.bytes_range.start) / (self.chunk_size))+1;
+                last.meta.bytes_range.end = last.meta.bytes_range.start + chunk_count * (self.chunk_size);
+                last.meta.chunk_count = chunk_count;
+                //last.meta.bytes_range.end = *end_at;
+
+            }
+        });
+
+        Ok(self.containers.access().clone())
+    }
+}
+
+struct SeqReader<R: Read> {
+    stream: Safe<R>,
+    remaining: u64,
+    lock: SafeBoolSignal,
+    end: SafeBoolSignal,
+    end_at: Safe<u64>,
+    pos: Safe<u64>,
+    payload_size: usize,
+}
+
+impl<X: Read> Read for SeqReader<X> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.remaining == 0 {
+            #[cfg(test)]
+            println!("End of stream");
+            self.lock.signal(false);
+
+            return Ok(0);
+        }
+
+        let read = buf.len().min(self.remaining as usize);
+
+        let mut read = self.stream.access().read(&mut buf[..read])?;
+        if read == 0 {
+
+            // filling with 0 untils remaining==0;
+            // TODO: smarter filling, until remaining is a multiple of payload size
+            read = buf.len().min((self.remaining as usize) % self.payload_size);
+            #[cfg(test)]
+            println!("Premature end of stream >& {} | read={}", self.remaining, read);
+            *self.end_at.access() = *self.pos.access();
+            self.end.signal(true);
+        }
+        *self.pos.access() += read as u64;
+        self.remaining -= read as u64;
+
+        if self.remaining == 0 {
+            #[cfg(test)]
+            println!("End of stream");
+            self.lock.signal(false);
+        }
+
+        Ok(read)
+    }
+}
+
+
+struct SeqReaderOpener<R: Read> {
+    pos: Safe<u64>,
+    stream: Safe<R>,
+    lock: SafeBoolSignal,
+    end: SafeBoolSignal,
+    end_at: Safe<u64>,
+    payload_size: usize,
+}
+
+impl<R: Read> Clone for SeqReaderOpener<R> {
+    fn clone(&self) -> Self {
+        Self {
+            pos: self.pos.clone(),
+            stream: self.stream.clone(),
+            lock: self.lock.clone(),
+            end: self.end.clone(),
+            payload_size: self.payload_size,
+            end_at: self.end_at.clone(),
+        }
+    }
+}
+
+impl<R: Read> LazyOpen<SeqReader<R>> for SeqReaderOpener<R> {
+    fn open(&self) -> SeqReader<R> {
+        todo!()
+    }
+}
+
+impl<R: Read> RangeLazyOpen<SeqReader<R>> for SeqReaderOpener<R> {
+    fn open_with_range(&self, range: Range<u64>) -> SeqReader<R> {
+        #[cfg(test)]
+        println!("Opening range {:?}", range);
+        loop {
+            let locked = self.lock.get_value();
+
+            if locked {
+                continue;
+            }
+
+            let mut pos = self.pos.access();
+            if *pos == range.start {
+                #[cfg(test)]
+                println!("Getting exclusive access to {:?}", range);
+                return SeqReader {
+                    stream: self.stream.clone(),
+                    remaining: range.get_size(),
+                    lock: self.lock.clone(),
+                    end: self.end.clone(),
+                    pos: self.pos.clone(),
+                    payload_size: self.payload_size,
+                    end_at: self.end_at.clone(),
+                };
+            }
+            thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 }
 
@@ -125,6 +326,7 @@ struct WorkerThread<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> 
     password: String,
 
     _phantom: std::marker::PhantomData<(R, S)>,
+    running: SafeBoolSignal,
 }
 
 unsafe impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Read, X: RangeLazyOpen<R>, S: AddSignaler<Range<u64>>> Send for WorkerThread<U, R, X, S> {}
@@ -138,6 +340,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         containers: Safe<Vec<Container>>,
         splitter: ChunkSplitter,
         password: String,
+        running: SafeBoolSignal,
     ) -> Self {
         Self {
             uploader,
@@ -148,6 +351,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
             splitter,
             password,
             _phantom: std::marker::PhantomData,
+            running,
         }
     }
 
@@ -165,14 +369,22 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         while self.progress_signal.is_running() {
             let mut remaining_containers = self.remaining_containers.access();
 
-            #[cfg(test)]
-            println!("Remaining containers: {:?}", remaining_containers);
+            // #[cfg(test)]
+            // println!("Remaining containers: {:?}", remaining_containers);
 
             if let Some(range) = remaining_containers.pop_front().clone() {
                 drop(remaining_containers);
+                #[cfg(test)]
+                println!("Doing range upload {:?}", range);
                 self.upload_range(range);
             } else {
-                break;
+                // println!("No more ranges to upload, sleeping >> {}", self.running.get_value());
+                if self.running.get_value() {
+                    drop(remaining_containers);
+                    sleep(std::time::Duration::from_millis(50));
+                } else {
+                    break;
+                }
             }
         }
     }
@@ -213,6 +425,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
 
 #[cfg(test)]
 mod test {
+    use std::io::Read;
     use std::ops::{Range};
     use std::path::PathBuf;
     use crate::{
@@ -244,6 +457,7 @@ mod test {
             SerializableWaterfall,
         },
     };
+    use crate::fs::FsNode;
     use crate::signal::progress::ProgressSignalAccessor;
     use crate::signal::StaticSignal;
     use crate::upload::webhook::WebhookUploader;
@@ -253,7 +467,7 @@ mod test {
     pub fn test_webhook() {
         let tokens = std::env::var("TOKENS").map(|t| t.split(",").map(|s| s.to_string()).collect::<Vec<_>>()).unwrap();
         let mut pool = UploadPool::new();
-        for token in tokens {
+        for token in tokens.clone() {
             let (id, token) = token.split_once(":").unwrap();
             let id = id.parse::<u64>().unwrap();
             println!("ID: {}, Token: {}", id, token);
@@ -266,10 +480,10 @@ mod test {
             pool.add_uploader(up);
         }
 
-        let mut uploader = ContainerUploader::new(24*1024*1024,
+        let mut uploader = ContainerUploader::new(24 * 1024 * 1024,
                                                   1 << 16, // 65536 bytes
-                                              "password".into(),
-                                                  pool,
+                                                  "password".into(),
+                                                  pool.clone(),
                                                   5);
 
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
@@ -305,6 +519,52 @@ mod test {
 
         serde_json::to_writer_pretty(file, &w.as_serializable()).unwrap();
     }
+
+    struct TestRead2 {
+        remaining: u64,
+    }
+    impl Read for TestRead2 {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let read = buf.len().min(self.remaining as usize);
+            buf.fill(0x1);
+            self.remaining -= read as u64;
+            Ok(read)
+        }
+    }
+
+    #[test]
+    pub fn test_webhook2() {
+        let tokens = std::env::var("TOKENS").map(|t| t.split(",").map(|s| s.to_string()).collect::<Vec<_>>()).unwrap();
+        let mut pool = UploadPool::new();
+        for token in tokens {
+            let (id, token) = token.split_once(":").unwrap();
+            let id = id.parse::<u64>().unwrap();
+            println!("ID: {}, Token: {}", id, token);
+            let mut up = WebhookUploader::new(AccountCredentials {
+                channel_id: id,
+                access_token: token.into(),
+                subscription: AccountSubscription::Free,
+            });
+            up.include_token(true);
+            pool.add_uploader(up);
+        }
+        // Test2
+        let mut uploader = ContainerUploader::new(2 * 1024 * 1024,
+                                                  1 << 16, // 65536 bytes
+                                                  "password".into(),
+                                                  pool.clone(),
+                                                  5);
+
+        let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
+        let r = uploader.upload_seq(
+            TestRead2 { remaining: 3_500_000 }, &mut signal.clone()).unwrap();
+
+        let file = std::fs::File::create("test.json").unwrap();
+
+        let wf = Waterfall::new(FsNode::root(), r);
+        serde_json::to_writer_pretty(file, &wf.as_serializable()).unwrap();
+    }
+
 
     #[test]
     pub fn test() {

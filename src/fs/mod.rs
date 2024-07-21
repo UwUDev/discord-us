@@ -107,7 +107,7 @@ pub trait IntoTree<T, C> {
 }
 
 impl<T> FsNode<T> {
-    fn root() -> Ref<Self> {
+    pub(crate) fn root() -> Ref<Self> {
         Self::new(&String::from(""), None)
     }
 
