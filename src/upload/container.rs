@@ -190,10 +190,8 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<SeqReader<R>>>, S> + Cl
             containers.sort_by(|a, b| a.meta.bytes_range.start.cmp(&b.meta.bytes_range.start));
             if l > 0 {
                 let last = containers.get_mut(l - 1).unwrap();
-                // TODO: update byterange
-                let chunk_count = ((*end_at - last.meta.bytes_range.start) / (self.chunk_size))+1;
-                last.meta.bytes_range.end = last.meta.bytes_range.start + chunk_count * (self.chunk_size);
-                last.meta.chunk_count = chunk_count;
+                last.meta.bytes_range.end = *end_at;
+                last.meta.chunk_count = ((*end_at - last.meta.bytes_range.start) / (self.chunk_size))+1;
                 //last.meta.bytes_range.end = *end_at;
 
             }
@@ -230,14 +228,20 @@ impl<X: Read> Read for SeqReader<X> {
 
             // filling with 0 untils remaining==0;
             // TODO: smarter filling, until remaining is a multiple of payload size
-            read = buf.len().min((self.remaining as usize) % self.payload_size);
+            // read = self.payload_size;
+            read = buf.len().min((self.remaining as i64 - self.payload_size as i64).abs() as usize % self.payload_size);
+
+            let mut end_at = self.end_at.access();
+            if *end_at == 0 {
+                *end_at = *self.pos.access();
+            }
+
             #[cfg(test)]
-            println!("Premature end of stream >& {} | read={}", self.remaining, read);
-            *self.end_at.access() = *self.pos.access();
+            println!("Premature end of stream >& {} | read={} | pos {}", self.remaining, read, self.pos.access());
             self.end.signal(true);
         }
         *self.pos.access() += read as u64;
-        self.remaining -= read as u64;
+        self.remaining -= (read as u64).min(self.remaining);
 
         if self.remaining == 0 {
             #[cfg(test)]
@@ -480,7 +484,7 @@ mod test {
             pool.add_uploader(up);
         }
 
-        let mut uploader = ContainerUploader::new(24 * 1024 * 1024,
+        let mut uploader = ContainerUploader::new(2 * 1024 * 1024,
                                                   1 << 16, // 65536 bytes
                                                   "password".into(),
                                                   pool.clone(),
@@ -488,7 +492,7 @@ mod test {
 
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
-        let f = scan_files(vec!["./src".into()]).unwrap();
+        let f = scan_files(vec!["./testc.mp4".into()]).unwrap();
 
         let path: PathBuf = "./src".into();
 
@@ -557,7 +561,7 @@ mod test {
 
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
         let r = uploader.upload_seq(
-            TestRead2 { remaining: 3_500_000 }, &mut signal.clone()).unwrap();
+            std::fs::File::open("./testc.mp4").unwrap(), &mut signal.clone()).unwrap();
 
         let file = std::fs::File::create("test.json").unwrap();
 

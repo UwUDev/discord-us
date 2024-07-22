@@ -69,8 +69,10 @@ impl<T: Chunked> Read for ChunkedRead<T> {
                     self.buf = chunk;
                     self.buf_position = 0;
                 } else {
-                    //println!("ChunkedRead::read : no more chunks");
-                    return Ok(0);
+                    #[cfg(test)]
+                    println!("ChunkedRead::read : no more chunks");
+                    return Ok(read)
+                    // return Ok(0);
                     // return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more chunks"));
                 }
             }
