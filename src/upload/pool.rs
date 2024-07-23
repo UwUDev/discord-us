@@ -79,6 +79,10 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
     pub fn add_uploader<U: Uploader<String, R, S> + CoolDownMs + Clone + Send + 'static>(&mut self, uploader: U) {
         self.uploaders.access().push(RefCell::new(PooledUploader::new(uploader)));
     }
+
+    pub fn clear(&mut self) {
+        self.uploaders.access().clear();
+    }
 }
 
 impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {

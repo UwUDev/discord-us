@@ -38,9 +38,9 @@ impl AccountSubscription {
 
 #[derive(Clone)]
 pub struct AccountCredentials {
-    pub(crate) channel_id: u64,
-    pub(crate) access_token: String,
-    pub(crate) subscription: AccountSubscription,
+    pub channel_id: u64,
+    pub access_token: String,
+    pub subscription: AccountSubscription,
 }
 
 #[derive(Clone)]

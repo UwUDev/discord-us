@@ -201,7 +201,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<SeqReader<R>>>, S> + Cl
     }
 }
 
-struct SeqReader<R: Read> {
+pub struct SeqReader<R: Read> {
     stream: Safe<R>,
     remaining: u64,
     lock: SafeBoolSignal,
@@ -494,7 +494,7 @@ mod test {
 
         let f = scan_files(vec!["./testc.mp4".into()]).unwrap();
 
-        let path: PathBuf = "./src".into();
+        let path: PathBuf = "./upl".into();
 
         let tree = (&f).into_tree(&path.canonicalize().unwrap().as_path_vec());
 
@@ -578,7 +578,7 @@ mod test {
 
         for token in tokens {
             pool.add_uploader(BotUploader::new(AccountCredentials {
-                channel_id: 1147616702780149781,
+                channel_id: 1200557435572715610,
                 access_token: token.into(),
                 subscription: AccountSubscription::Free,
             }));
@@ -586,7 +586,7 @@ mod test {
 
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
-        let f = scan_files(vec!["./src".into()]).unwrap();
+        let f = scan_files(vec!["./upl".into()]).unwrap();
 
         let path: PathBuf = "./src".into();
 
