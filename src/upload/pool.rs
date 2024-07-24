@@ -140,6 +140,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 .borrow_mut();
 
             println!("StartWork {} | uploader.concurrency: {}", uploader_index, uploader.cooldown.get_concurrency());
+            uploader.total_uploaded += 1;
             uploader.cooldown.start_work(); // << mark this uploader as start working even if we aren't working rn
 
             println!("Waiting for cooldown {}ms ({})", uploader.cooldown.remaining_wait(), uploader_index);
