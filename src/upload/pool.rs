@@ -39,6 +39,7 @@ pub struct PooledUploader<S: AddSignaler<Range<u64>>, R: Read> {
     uploader: Box<dyn ClonableUploader<String, R, S>+Send>,
     cooldown: CoolDown,
     max_size: u64,
+    total_uploaded: u64,
 
     _phantom: std::marker::PhantomData<(R, S)>,
 }
@@ -49,6 +50,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> PooledUploader<S, R> {
             cooldown: U::create_cooldown_wait(),
             max_size: uploader.get_max_size(),
             uploader: Box::new(uploader),
+            total_uploaded: 0,
 
             _phantom: std::marker::PhantomData,
         }
@@ -83,6 +85,10 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
     pub fn clear(&mut self) {
         self.uploaders.access().clear();
     }
+
+    pub fn count(&self) -> usize {
+        self.uploaders.access().len()
+    }
 }
 
 impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
@@ -99,8 +105,9 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
         }
 
         mut_keys.sort_by_key(|(x)| {
-            let cooldown = &uploaders.get(*x).unwrap().borrow().cooldown;
-            (cooldown.get_concurrency(), cooldown.remaining_wait())
+            let uploader = &uploaders.get(*x).unwrap().borrow();
+
+            (uploader.total_uploaded, uploader.cooldown.get_concurrency(), uploader.cooldown.remaining_wait())
         });
 
         return mut_keys.first().map(|x| *x);
@@ -170,6 +177,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
 
 
             println!("End work ({})", uploader_index);
+            uploader.total_uploaded += 1;
             uploader.cooldown.end_work(ended_at);
 
             return Ok(result);
