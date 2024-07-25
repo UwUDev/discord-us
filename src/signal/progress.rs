@@ -116,7 +116,7 @@ mod test {
 
 
         signal.progression.access().get_signal().on_signal(|x| {
-            println!("Signal: {:?}", x);
+            #[cfg(test)] println!("Signal: {:?}", x);
         });
 
 
@@ -147,6 +147,8 @@ mod test {
 
         signal.progression.access().retrim_ranges();
 
-        println!("Signal (final) : {:?}", signal.progression.access().get_signal_data());
+        #[cfg(
+            test
+        )] println!("Signal (final) : {:?}", signal.progression.access().get_signal_data());
     }
 }

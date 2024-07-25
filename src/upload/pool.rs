@@ -146,11 +146,15 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "No uploader available"))?
                 .borrow_mut();
 
-            println!("StartWork {} | uploader.concurrency: {}", uploader_index, uploader.cooldown.get_concurrency());
+            #[cfg(
+                test
+            )] println!("StartWork {} | uploader.concurrency: {}", uploader_index, uploader.cooldown.get_concurrency());
             uploader.total_uploaded += 1;
             uploader.cooldown.start_work(); // << mark this uploader as start working even if we aren't working rn
 
-            println!("Waiting for cooldown {}ms ({})", uploader.cooldown.remaining_wait(), uploader_index);
+            #[cfg(
+                test
+            )] println!("Waiting for cooldown {}ms ({})", uploader.cooldown.remaining_wait(), uploader_index);
 
             // clone uploader so we can drop the lock on uploaders
             let mut cooldown_wait_clone = uploader.cooldown.clone();
@@ -166,7 +170,9 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
 
             let ended_at = Instant::now();
 
-            println!("Finished uploading, acquiring lock on uploaders ({})", uploader_index);
+            #[cfg(
+                test
+            )] println!("Finished uploading, acquiring lock on uploaders ({})", uploader_index);
 
             // acquire lock on uploaders
             let uploaders = self.uploaders.access();
@@ -175,13 +181,15 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 .borrow_mut();
 
             if let UploaderCoolDownResponse::CoolDown(_, cooldown, concurrency) = result {
-                println!("Cooldown {}ms ({}) + concurrency = {}", cooldown, uploader_index, concurrency.max(1));
+                #[cfg(
+                    test
+                )] println!("Cooldown {}ms ({}) + concurrency = {}", cooldown, uploader_index, concurrency.max(1));
                 uploader.cooldown.set_duration(Duration::from_millis(cooldown));
                 uploader.cooldown.set_max_concurrency(concurrency.max(1)); // in case of concurrency == 0, this will produce a deadlock
             }
 
 
-            println!("End work ({})", uploader_index);
+            #[cfg(test)] println!("End work ({})", uploader_index);
             uploader.total_uploaded += 1;
             uploader.cooldown.end_work(ended_at);
 
@@ -255,7 +263,7 @@ mod test {
                         len,
                         &mut signal.clone_with_offset((((j * PER_THREAD) + i) * SIZE) as u64),
                     ).unwrap();
-                    println!("Uploaded thread={} | result = {:?}", j, result.unwrap());
+                    #[cfg(test)] println!("Uploaded thread={} | result = {:?}", j, result.unwrap());
                 }
             }));
         }
@@ -267,9 +275,9 @@ mod test {
 
         let mut signal = signal.get_progression().access();
         //signal.retrim_ranges();
-        println!("Uploaded | signal = {:?}", signal.get_signal_data());
+        #[cfg(test)] println!("Uploaded | signal = {:?}", signal.get_signal_data());
 
         signal.retrim_ranges();
-        println!("Uploaded | signal = {:?}", signal.get_signal_data());
+        #[cfg(test)] println!("Uploaded | signal = {:?}", signal.get_signal_data());
     }
 }

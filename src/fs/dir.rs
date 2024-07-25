@@ -107,7 +107,7 @@ impl Chunked for ChunkedFileReader {
         let read = self.file.read(&mut buf).unwrap();
 
         //#[cfg(test)]
-        //println!("Processing next chunk for file (read={}) {:?}", read, self.file);
+        //#[cfg(test)] println!("Processing next chunk for file (read={}) {:?}", read, self.file);
 
         match read {
             0 => None,
@@ -180,13 +180,13 @@ mod test {
 
         let files = scan_files(vec![scan.clone()]).unwrap();
 
-        println!("Scanned {} files", files.len());
+        #[cfg(test)] println!("Scanned {} files", files.len());
 
         let relative = scan.canonicalize().unwrap().as_path_vec();
-        println!("Relative: {:?}", relative);
+        #[cfg(test)] println!("Relative: {:?}", relative);
 
         // for file in files.iter() {
-        //   println!("Path {:?}", file.path.as_path_relative(&relative).as_path_string());
+        //   #[cfg(test)] println!("Path {:?}", file.path.as_path_relative(&relative).as_path_string());
         //}
 
         let node = (&files).into_tree(&relative);
@@ -194,11 +194,11 @@ mod test {
         let node = (*node.borrow()).clone();
 
         let str = serde_json::to_string(&node).unwrap();
-        println!("{}", str);
+        #[cfg(test)] println!("{}", str);
 
         let node: SerializedFsNode<DirEntryNode> = serde_json::from_str(&str).unwrap();
 
-        println!("{:?}", node.into_node(None));
+        #[cfg(test)] println!("{:?}", node.into_node(None));
     }
 
     #[test]
@@ -217,7 +217,7 @@ mod test {
 
         while size > 0 {
             let read = r.read(&mut buf).unwrap();
-            println!("Read {} bytes|r {}", read, size);
+            #[cfg(test)] println!("Read {} bytes|r {}", read, size);
             let _ = f.write(&buf[..read]).unwrap();
             size -= read as u64;
         }

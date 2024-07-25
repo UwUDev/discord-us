@@ -205,10 +205,10 @@ mod test {
 
         let ranges = splitter.split_into_ranges(100 * 1000 * 1000);
 
-        println!("{:?}", ranges);
+        #[cfg(test)] println!("{:?}", ranges);
 
         for range in ranges {
-            println!("{:?}", splitter.add_padding(&range));
+            #[cfg(test)] println!("{:?}", splitter.add_padding(&range));
         }
     }
 }

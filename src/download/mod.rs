@@ -137,14 +137,14 @@ impl LazyOpen<OpenedC> for ContainerOpener {
 impl RangeLazyOpen<OpenedC> for ContainerOpener {
     fn open_with_range(&self, range: Range<u64>) -> OpenedC {
         //#[cfg(test)]
-        //println!("Opening container  1({}-{}) (#size: {}) with range {:?}", self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.container.meta.get_size(), range);
+        //#[cfg(test)] println!("Opening container  1({}-{}) (#size: {}) with range {:?}", self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.container.meta.get_size(), range);
 
         let chunk_count_end = range.end / (self.get_chunk_size());
         let chunk_count_start = range.start / (self.get_chunk_size());
         let range = (range.start + chunk_count_start * crypt::METADATA_SIZE)..(range.end + chunk_count_end * crypt::METADATA_SIZE);
 
         //#[cfg(test)]
-        //println!("Opening container  2({}-{}) (#size: {}) with range {:?} -> chunk_count_start: {}, chunk_count_end: {}", self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.container.meta.get_size(), range,chunk_count_start,chunk_count_end);
+        //#[cfg(test)] println!("Opening container  2({}-{}) (#size: {}) with range {:?} -> chunk_count_start: {}, chunk_count_end: {}", self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.container.meta.get_size(), range,chunk_count_start,chunk_count_end);
 
         let key = self.key_derivator.derive_password(&self.container.meta.salt);
 
@@ -177,7 +177,7 @@ impl<T: Read, S: AddSignaler<Range<u64>>> Chunked for OpenedContainer<T, S> {
         let mut read = 0;
 
         //#[cfg(test)]
-        //println!("Process_next_Chunk ({}-{}) {} {}",self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.read_total, self.read_total/self.container.meta.chunk_size);
+        //#[cfg(test)] println!("Process_next_Chunk ({}-{}) {} {}",self.container.meta.bytes_range.start, self.container.meta.bytes_range.end, self.read_total, self.read_total/self.container.meta.chunk_size);
 
         while read < chunk_size {
             if !self.signal.is_running() {
@@ -275,7 +275,7 @@ mod test {
         let n = std::time::Instant::now();
 
         let limiter = crate::utils::limit::RateLimiter::tokens_per_seconds(500.0 * 1024.0 * 1024.0);
-        println!("Thread count: {}", t_count);
+        #[cfg(test)] println!("Thread count: {}", t_count);
         for i in 0..t_count { // the +1 is to be sure to download the last part if the division is not exact
             let range = stream.get_size().min(i * l)..stream.get_size().min((i + 1) * l);
             let s = stream.clone();
@@ -283,7 +283,7 @@ mod test {
             let mut limiter = limiter.clone();
 
             handles.push(std::thread::spawn(move || {
-                println!("Downloading range {:?}", range);
+                #[cfg(test)] println!("Downloading range {:?}", range);
 
                 let mut reader = s.open_with_range(range.clone());
 
@@ -293,17 +293,17 @@ mod test {
 
                 let mut f = std::fs::File::create(format!("testC.{}.txt", i)).unwrap();
                 //f.seek(SeekFrom::Start(range.start)).unwrap();
-                println!("Seeked to {:?}", f.stream_position());
+                #[cfg(test)] println!("Seeked to {:?}", f.stream_position());
 
                 while read < range.get_size() {
                     let c = reader.read(&mut buf).unwrap();
                     read += c as u64;
-                    // println!("position to {} (+= {})", f.stream_position().unwrap(), c);
+                    // #[cfg(test)] println!("position to {} (+= {})", f.stream_position().unwrap(), c);
                     f.write(&buf[0..c]).unwrap();
                     limiter.remove_tokens(c as f64).unwrap();
                 }
 
-                println!("Wrote from {} to {}", range.start, range.start + read);
+                #[cfg(test)] println!("Wrote from {} to {}", range.start, range.start + read);
             }));
 
             // handles.pop().unwrap().join().unwrap();

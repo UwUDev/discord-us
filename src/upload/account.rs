@@ -164,7 +164,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
         impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<'a, R, S> {
             fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
                 if !self.signal.is_running() {
-                    println!("Interrupted");
+                    #[cfg(test)] println!("Interrupted");
                     return Ok(0);
                 }
 
@@ -255,6 +255,8 @@ mod test {
 
         let mut signal = signal.get_progression().access();
         signal.retrim_ranges();
-        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url);
+        #[cfg(
+            test
+        )] println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url);
     }
 }

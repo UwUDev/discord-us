@@ -95,6 +95,6 @@ mod test {
 
         r.add_signal(Range { start: 0, end: 10 });
 
-        println!("{:?}", rc.borrow_mut().get_signal().get_signal_data());
+        #[cfg(test)] println!("{:?}", rc.borrow_mut().get_signal().get_signal_data());
     }
 }

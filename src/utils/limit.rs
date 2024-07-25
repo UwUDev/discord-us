@@ -94,14 +94,14 @@ impl RateLimiter {
 
         let remaining = f64::min(inner.tokens_per_units * elapsed as f64, inner.tokens_per_units * inner.units);
 
-        //println!("remaining {} < count {} | elapsed {} + micros {}", remaining, count, elapsed, micros);
+        //#[cfg(test)] println!("remaining {} < count {} | elapsed {} + micros {}", remaining, count, elapsed, micros);
 
         if remaining < count {
             // Compute sleep time, use locked up to
             let sleep_time = (count - remaining) / inner.tokens_per_units;
 
             // sleep with lock being held
-            //println!("Sleeping for {} micros", sleep_time as u64);
+            //#[cfg(test)] println!("Sleeping for {} micros", sleep_time as u64);
 
             sleep(Duration::from_micros(sleep_time as u64));
 
@@ -288,7 +288,7 @@ mod test {
             let h = spawn(move || {
                 for x in 0..10 {
                     l.remove_tokens(100.0).unwrap();
-                    println!("{}", (i * 10) + x);
+                    #[cfg(test)] println!("{}", (i * 10) + x);
                 }
             });
             j.push(h);
@@ -298,6 +298,6 @@ mod test {
             h.join().unwrap();
         }
 
-        println!("Elapsed {:?}", now.elapsed());
+        #[cfg(test)] println!("Elapsed {:?}", now.elapsed());
     }
 }

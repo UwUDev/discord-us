@@ -70,7 +70,7 @@ impl<T: Chunked> Read for ChunkedRead<T> {
                 self.buf_position = 0;
             } else {
                 #[cfg(test)]
-                println!("ChunkedRead::read : no more chunks");
+                #[cfg(test)] println!("ChunkedRead::read : no more chunks");
                 return Ok(read);
                 // return Ok(0);
                 // return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more chunks"));
@@ -119,14 +119,14 @@ impl<T: Read> Read for OmitStream<T> {
         let to_read = min((self.omit_after - self.read) as usize, buf.len());
 
         //#[cfg(test)]
-        //println!("OmitStream::read : to_read = {}", to_read);
+        //#[cfg(test)] println!("OmitStream::read : to_read = {}", to_read);
 
         if to_read == 0 {
             return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more bytes to read"));
         }
 
         //#[cfg(test)]
-        //println!("OmitStream::read : reading {} bytes", to_read);
+        //#[cfg(test)] println!("OmitStream::read : reading {} bytes", to_read);
 
         let read = self.reader.read(&mut buf[..to_read])?;
 
@@ -164,7 +164,7 @@ impl<T: RangeLazyOpen<R> + Size + ChunkSize, R: Chunked> RangeLazyOpen<OmitStrea
         let stream = ChunkedRead::from(self.lazy_open.open_with_range(start..end));
 
         //#[cfg(test)]
-        //println!("ChunkedOmitStream::open_with_range : opening stream from {} to {} (omit={} stop={})", start, end, range.start - start, range.end - start);
+        //#[cfg(test)] println!("ChunkedOmitStream::open_with_range : opening stream from {} to {} (omit={} stop={})", start, end, range.start - start, range.end - start);
 
         OmitStream::from(stream, range.start - start, range.end - start)
     }
@@ -282,14 +282,14 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
             }
 
             //#[cfg(test)]
-            //println!("Find_next_reader(before): cursor = {}, range = {:?}", self.cursor, self.range);
+            //#[cfg(test)] println!("Find_next_reader(before): cursor = {}, range = {:?}", self.cursor, self.range);
 
             let (next_reader, range) = self.find_next_reader().ok_or(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more readers"))?;
 
             let relative_start = self.range.start.zero_substract(range.start);
 
             //#[cfg(test)]
-            //println!("Find_next_reader, min({}, {}) - {}", self.range.end, range.end, range.start);
+            //#[cfg(test)] println!("Find_next_reader, min({}, {}) - {}", self.range.end, range.end, range.start);
 
             let relative_end = min(self.range.end, range.end) - (range.start);
 
@@ -299,7 +299,7 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Read for Mult
             };
 
             //#[cfg(test)]
-            //println!("Find_next_reader : opening stream from {} to {} (real={}->{})", relative_start, relative_end, range.start, range.end);
+            //#[cfg(test)] println!("Find_next_reader : opening stream from {} to {} (real={}->{})", relative_start, relative_end, range.start, range.end);
 
             let read = omit_stream.open_with_range(relative_start..relative_end);
 
@@ -464,7 +464,7 @@ mod test2 {
 
     impl RangeLazyOpen<TestChunked> for B {
         fn open_with_range(&self, range: Range<u64>) -> TestChunked {
-            println!("open_with_range {:?}", range);
+            #[cfg(test)] println!("open_with_range {:?}", range);
             TestChunked {
                 cursor: range.start as u8,
                 stop: range.end as u8,
@@ -493,7 +493,7 @@ mod test2 {
         while remaining > 0 {
             let r = reader.read(&mut buf).unwrap();
 
-            println!("remaining {} | r {} | buf {:?}", remaining, r, &buf[..r]);
+            #[cfg(test)] println!("remaining {} | r {} | buf {:?}", remaining, r, &buf[..r]);
 
             remaining -= r as u64;
         }

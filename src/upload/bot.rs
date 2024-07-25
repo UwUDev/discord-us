@@ -111,7 +111,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             _ => 0.0
         };
 
-        println!("Remaining: {} | Reset after: {:?}", remaining, reset_after);
+        #[cfg(test)] println!("Remaining: {} | Reset after: {:?}", remaining, reset_after);
 
 
         let data = response.into_json::<serde_json::Value>()?;
@@ -144,7 +144,7 @@ impl<'a, R: Read, S: AddSignaler<Range<u64>>> Size for FormDataStream<'a, R, S> 
 impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<'a, R, S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if !self.signal.is_running() {
-            println!("Interrupted");
+            #[cfg(test)] println!("Interrupted");
             return Ok(0);
             //return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
         }
@@ -209,6 +209,8 @@ mod test {
 
         let mut signal = signal.get_progression().access();
         signal.retrim_ranges();
-        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
+        #[cfg(
+            test
+        )] println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
     }
 }

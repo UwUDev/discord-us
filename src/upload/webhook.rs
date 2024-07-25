@@ -104,7 +104,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for WebhookUplo
             _ => 0.0
         };
 
-        println!("Remaining: {} | Reset after: {:?}", remaining, reset_after);
+        #[cfg(test)] println!("Remaining: {} | Reset after: {:?}", remaining, reset_after);
 
 
         let data = response.into_json::<serde_json::Value>()?;
@@ -176,6 +176,8 @@ mod test {
 
         let mut signal = signal.get_progression().access();
         signal.retrim_ranges();
-        println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
+        #[cfg(
+            test
+        )] println!("Uploaded | signal = {:?} | elapsed {:?} | url = {}", signal.get_signal_data(), start.elapsed(), url.unwrap());
     }
 }

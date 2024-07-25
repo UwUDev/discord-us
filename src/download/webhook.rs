@@ -158,7 +158,7 @@ impl Webhook {
 
         let url = attachment.get("url").ok_or_else(|| Error::new(std::io::ErrorKind::Other, "URL not found"))?;
 
-        //println!("Resolved URL: {}", url);
+        //#[cfg(test)] println!("Resolved URL: {}", url);
 
 
         Ok(WebhookResponse {

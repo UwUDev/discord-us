@@ -201,7 +201,7 @@ mod test {
         let signal = Safe::wrap(signal);
 
         signal.access().on_signal(|x| {
-            println!("Signal: {:?}", x);
+            #[cfg(test)] println!("Signal: {:?}", x);
         });
 
         let s = signal.clone();
@@ -221,12 +221,12 @@ mod test {
 
         signal.access().retrim_ranges();
 
-        println!("Signal (final) : {:?}", signal.access().get_signal_data());
+        #[cfg(test)] println!("Signal (final) : {:?}", signal.access().get_signal_data());
 
         j.join().unwrap();
 
         signal.access().retrim_ranges();
 
-        println!("Signal (final2) : {:?}", signal.access().get_signal_data());
+        #[cfg(test)] println!("Signal (final2) : {:?}", signal.access().get_signal_data());
     }
 }
