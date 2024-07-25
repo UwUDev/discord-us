@@ -6,6 +6,7 @@ use std::{
     ops::{Range},
 };
 use std::io::Error;
+use std::sync::{Arc, Mutex};
 use url::Url;
 use crate::{
     pack::{
@@ -49,6 +50,7 @@ use crate::{
     },
 };
 use crate::download::webhook::{is_valid_webhook, WebhookResolver};
+use crate::utils::safe::SafeAccessor;
 
 pub trait Download<R: Read> {
     fn download(&self) -> Result<R>;
@@ -61,6 +63,7 @@ pub struct ContainerOpener {
     key_derivator: KeyDerivator,
 
     webhook_resolver: Option<WebhookResolver>,
+    on_resolve: Safe<Option<Box<dyn Fn(&String) -> ()>>>,
 }
 
 pub struct OpenedContainer<T: Read, S: AddSignaler<Range<u64>>> {
@@ -76,13 +79,15 @@ type OpenedC = OpenedContainer<ReadProxy, SignalRange>;
 
 
 impl ContainerOpener {
-    pub fn new(container: Container, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>, password: String, resolver: Option<WebhookResolver>) -> Self {
+    pub fn new(container: Container, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>, password: String, resolver: Option<WebhookResolver>,
+    on_resolve: Safe<Option<Box<dyn Fn(&String) -> ()>>>) -> Self {
         let key_derivator = KeyDerivator::from_password(password);
         Self {
             container,
             signal,
             key_derivator,
             webhook_resolver: resolver,
+            on_resolve,
         }
     }
 
@@ -99,7 +104,15 @@ impl ContainerOpener {
                 } else {
                     match &self.webhook_resolver {
                         Some(resolver) => {
-                            let url = resolver.resolve(u)?;
+                            let (url, w_url) = resolver.resolve(u)?;
+                            // if let Some(on_resolve) = on_resolve.access() {
+                            //     on_resolve.access().unwrap()(&w_url);
+                            // }
+                            let r = self.on_resolve.clone();
+                            if let Some(r) = r.access().as_ref() {
+                                r(&w_url);
+                            }
+
                             Ok(HttpDownloader::new(url, range))
                         }
                         None => Err(Error::new(std::io::ErrorKind::Other, "Webhook expired"))
@@ -203,11 +216,12 @@ pub struct ContainerDownloader {
     containers: Vec<Container>,
     password: String,
     webhook_resolver: Option<WebhookResolver>,
+    on_resolve: Safe<Option<Box<dyn Fn(&String) -> ()>>>,
 }
 
 impl ContainerDownloader {
     pub fn new(containers: Vec<Container>, password: String) -> Self {
-        Self { containers, password, webhook_resolver: None }
+        Self { containers, password, webhook_resolver: None, on_resolve: Safe::wrap(None) }
     }
 
     pub fn with_webhook_resolver(mut self, resolver: WebhookResolver) -> Self {
@@ -215,9 +229,14 @@ impl ContainerDownloader {
         self
     }
 
+    pub fn with_on_resolve(mut self, on_resolve: Box<dyn Fn(&String) -> ()>) -> Self {
+        self.on_resolve.access().replace(on_resolve);
+        self
+    }
+
     pub fn to_stream(&self, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>) -> MultiChunkedStream<ContainerOpener, OpenedC> {
         let containers: Vec<_> = self.containers.iter().map(|x|
-        ContainerOpener::new(x.clone(), signal.clone(), self.password.clone(), self.webhook_resolver.clone())
+        ContainerOpener::new(x.clone(), signal.clone(), self.password.clone(), self.webhook_resolver.clone(), self.on_resolve.clone())
         ).collect();
 
         MultiChunkedStream::from(containers)

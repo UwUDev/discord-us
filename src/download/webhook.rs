@@ -73,7 +73,7 @@ impl WebhookResolver {
         }
     }
 
-    pub fn resolve(&self, url: Url) -> std::io::Result<String> {
+    pub fn resolve(&self, url: Url) -> std::io::Result<(String, String)> {
         // unlock hashmap
         let id = url.query_pairs().find(|(k, _)| k == "webhook_id").unwrap().1.parse::<u64>().unwrap();
         let token = url.query_pairs().find(|(k, _)| k == "token").unwrap().1;
@@ -116,7 +116,15 @@ impl WebhookResolver {
         }
         w.cool_down.end_work(Instant::now());
 
-        Ok(resp.url)
+        let encoded = url::form_urlencoded::byte_serialize(resp.url.as_bytes()).collect::<String>();
+
+        let w_url = format!("webhook://{}?webhook_id={}&token={}&url={}",
+                            message_id,
+                            id,
+                            token,
+                            encoded);
+
+        Ok((resp.url, w_url))
     }
 }
 
@@ -144,7 +152,7 @@ impl Webhook {
 
         let url = attachment.get("url").ok_or_else(|| Error::new(std::io::ErrorKind::Other, "URL not found"))?;
 
-        println!("Resolved URL: {}", url);
+        //println!("Resolved URL: {}", url);
 
 
         Ok(WebhookResponse {
