@@ -1,17 +1,18 @@
 use std::io::{Error, Read};
 use std::ops::Range;
 use std::time::Duration;
+
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use serde_json::json;
 use ureq::{Agent, AgentBuilder};
+
 use crate::signal::AddSignaler;
 use crate::signal::progress::{ProgressSignal, ProgressSignalTrait};
-use crate::upload::account::{AccountCredentials};
 use crate::upload::{Uploader, UploaderCoolDownResponse, UploaderMaxSize};
+use crate::upload::account::AccountCredentials;
 use crate::utils::limit::CoolDownMs;
 use crate::utils::read::StaticStream;
-
 
 const MAX_WEBHOOK_SIZE: u64 = 24 * 1024 * 1024;
 
@@ -134,26 +135,24 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for WebhookUplo
 
 #[cfg(test)]
 mod test {
-    use crate::{upload::{
-        account::{
-            AccountCredentials,
-            AccountSubscription,
-        },
-        webhook::{WebhookUploader},
-        Uploader,
-    }, signal::{
-        StoredSignal,
+    use std::fs::File;
+    use std::ops::Range;
+
+    use crate::{signal::{
         progress::{
             ProgressSignal,
             ProgressSignalAccessor,
         },
+        StoredSignal,
+    }, upload::{
+        account::{
+            AccountCredentials,
+            AccountSubscription,
+        },
+        Uploader,
+        webhook::WebhookUploader,
     },
     };
-
-    use std::{
-        ops::{Range}
-    };
-    use std::fs::File;
     use crate::signal::StaticSignal;
     use crate::utils::safe::SafeAccessor;
 

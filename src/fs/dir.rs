@@ -1,30 +1,32 @@
 use std::{
-    fs::{File, canonicalize},
+    fs::{canonicalize, File},
+    io::{Read, SeekFrom},
     ops::Range,
     path::PathBuf,
-    io::{Read, SeekFrom},
 };
 use std::io::Seek;
+
+use serde::{
+    Deserialize, Serialize,
+};
 use walkdir::WalkDir;
+
 use crate::{
+    fs::{
+        AsPathRelative,
+        FsNode,
+        IntoTree,
+        Ref,
+    },
     utils::{
         range::Ranged,
         read::{
             Chunked,
+            ChunkSize,
             LazyOpen,
             RangeLazyOpen,
-            ChunkSize,
         },
     },
-    fs::{
-        FsNode,
-        IntoTree,
-        Ref,
-        AsPathRelative,
-    },
-};
-use serde::{
-    Serialize, Deserialize,
 };
 
 #[derive(Clone, Debug)]
@@ -152,28 +154,25 @@ impl IntoTree<DirEntryNode, &Vec<String>> for &Vec<DirEntry> {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        Size,
-        fs::{AsPathVec, SerializedFsNode, IntoTree, dir::{
-            scan_files,
-            ChunkedFileReader, DirEntry,
-            DirEntryNode,
-        }},
-        utils::{
-            read::{
-                MultiChunkedStream,
-                RangeLazyOpen,
-            }
-        },
-    };
     use std::{
-        io::{
-            Read
-        },
-        ops::{Range},
+        io::Read,
+        ops::Range,
     };
     use std::io::Write;
-    use std::path::{PathBuf};
+    use std::path::PathBuf;
+
+    use crate::{
+        fs::{AsPathVec, dir::{
+            ChunkedFileReader,
+            DirEntry, DirEntryNode,
+            scan_files,
+        }, IntoTree, SerializedFsNode},
+        Size,
+        utils::read::{
+            MultiChunkedStream,
+            RangeLazyOpen,
+        },
+    };
 
     #[test]
     pub fn test_scan() {

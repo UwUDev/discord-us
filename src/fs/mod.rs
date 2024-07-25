@@ -1,13 +1,14 @@
 use std::{
-    rc::Rc,
     cell::RefCell,
     collections::HashMap,
-    path::{Component, Path, MAIN_SEPARATOR},
     fmt::{Debug, Formatter},
+    path::{Component, MAIN_SEPARATOR, Path},
+    rc::Rc,
 };
+
 use serde::{
-    Serialize,
     Deserialize,
+    Serialize,
     Serializer,
 };
 

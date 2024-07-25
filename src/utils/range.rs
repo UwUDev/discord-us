@@ -1,4 +1,5 @@
-use std::ops::{Range};
+use std::ops::Range;
+
 use crate::Size;
 
 pub trait Ranged {

@@ -1,21 +1,22 @@
 use std::{
+    cell::RefCell,
     io::{Error, Read},
     ops::Range,
     thread::sleep,
     time::{Duration, Instant},
-    cell::RefCell,
 };
+
 use dyn_clone::{clone_trait_object, DynClone};
 
 use crate::{
-    upload::{
-        Uploader,
-        UploaderMaxSize,
-        UploaderCoolDownResponse,
-    },
     signal::{
         AddSignaler,
-        progress::{ProgressSignal},
+        progress::ProgressSignal,
+    },
+    upload::{
+        Uploader,
+        UploaderCoolDownResponse,
+        UploaderMaxSize,
     },
     utils::{
         limit::{
@@ -207,18 +208,18 @@ impl<S: AddSignaler<Range<u64>>, R: Read> Uploader<String, R, S> for UploadPool<
 
 #[cfg(test)]
 mod test {
-    use std::fs::File;
     use std::ops::Range;
     use std::thread::JoinHandle;
+
+    use crate::signal::{StaticSignal, StoredSignal};
     use crate::signal::progress::{ProgressSignal, ProgressSignalAccessor};
-    use crate::signal::{StoredSignal, StaticSignal};
     use crate::Size;
     use crate::upload::account::{AccountCredentials, AccountSubscription};
     use crate::upload::bot::BotUploader;
-    use crate::upload::pool::{UploadPool};
+    use crate::upload::pool::UploadPool;
     use crate::upload::Uploader;
     use crate::utils::read::StaticStream;
-    use crate::utils::safe::{SafeAccessor};
+    use crate::utils::safe::SafeAccessor;
 
     #[test]
     pub fn test() {

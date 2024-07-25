@@ -1,21 +1,22 @@
 use std::{
+    io::{Error, Read},
     ops::Range,
-    io::{Read, Error},
-    time::{Duration},
-};
-use crate::{
-    upload::{
-        Uploader,
-        UploaderMaxSize,
-        UploaderCoolDownResponse,
-    },
-    signal::{
-        AddSignaler,
-        progress::{ProgressSignal,ProgressSignalTrait},
-    },
+    time::Duration,
 };
 
 use ureq::{Agent, AgentBuilder};
+
+use crate::{
+    signal::{
+        AddSignaler,
+        progress::{ProgressSignal, ProgressSignalTrait},
+    },
+    upload::{
+        Uploader,
+        UploaderCoolDownResponse,
+        UploaderMaxSize,
+    },
+};
 
 #[derive(Clone)]
 pub enum AccountSubscription {
@@ -212,7 +213,17 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
 
 #[cfg(test)]
 mod test {
+    use std::fs::File;
+    use std::ops::Range;
+
     use crate::{
+        signal::{
+            progress::{
+                ProgressSignal,
+                ProgressSignalAccessor
+            },
+            StoredSignal,
+        },
         upload::{
             account::{
                 AccountCredentials,
@@ -221,19 +232,7 @@ mod test {
             },
             Uploader,
         },
-        signal::{
-            StoredSignal,
-            progress::{
-                ProgressSignal,
-                ProgressSignalAccessor
-            },
-        },
     };
-
-    use std::{
-        ops::{Range}
-    };
-    use std::fs::File;
     use crate::signal::StaticSignal;
     use crate::utils::safe::SafeAccessor;
 

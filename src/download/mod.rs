@@ -1,55 +1,47 @@
-pub mod http;
-pub mod webhook;
-
 use std::{
     io::{Read, Result},
-    ops::{Range},
+    ops::Range,
 };
 use std::io::Error;
+
 use url::Url;
+
 use crate::{
+    download::http::HttpDownloader,
     pack::{
-        Size,
-        container::{
-            Container,
-        },
+        container::Container,
         crypt,
-        crypt::{
-            ChunkCipher,
-        },
-        key::{
-            KeyDerivator,
-        },
+        crypt::ChunkCipher,
+        key::KeyDerivator,
+        Size,
     },
     signal::{
         AddSignaler,
         DerivedSignal,
-        StoredSignal,
         progress::{
             ProgressSignal,
             ProgressSignalTrait,
         },
+        StoredSignal,
     },
     utils::{
+        range::Ranged,
         read::{
-            RangeLazyOpen,
-            LazyOpen,
-            ReadProxy,
             Chunked,
             ChunkSize,
+            LazyOpen,
             MultiChunkedStream,
+            RangeLazyOpen,
+            ReadProxy,
         },
-        safe::{Safe},
-        range::{Ranged},
-    },
-    download::{
-        http::{
-            HttpDownloader,
-        }
+        safe::Safe,
     },
 };
 use crate::download::webhook::{is_valid_webhook, WebhookResolver};
 use crate::utils::safe::SafeAccessor;
+
+pub mod http;
+pub mod webhook;
 
 pub trait Download<R: Read> {
     fn download(&self) -> Result<R>;
@@ -246,21 +238,18 @@ impl ContainerDownloader {
 
 #[cfg(test)]
 mod test {
-    use crate::{pack::{
-        Waterfall,
-        SerializableWaterfall,
-    }, download::{
-        ContainerDownloader,
-    }, utils::{
-        read::{RangeLazyOpen}
-    }, Size, ZeroSubstract};
-    use std::io::{Read, SeekFrom, Write, Seek};
+    use std::io::{Read, Seek, Write};
     use std::thread::JoinHandle;
 
     use serde_json;
+
+    use crate::{download::ContainerDownloader, pack::{
+        SerializableWaterfall,
+        Waterfall,
+    }, Size, utils::read::RangeLazyOpen};
     use crate::download::webhook::WebhookResolver;
-    use crate::utils::read::LazyOpen;
     use crate::utils::limit::RateLimiterTrait;
+    use crate::utils::read::LazyOpen;
 
     #[test]
     pub fn test() {

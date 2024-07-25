@@ -1,5 +1,5 @@
+use std::cmp::PartialOrd;
 use std::ops::Sub;
-use std::cmp::{PartialOrd};
 
 pub mod signal;
 pub mod upload;

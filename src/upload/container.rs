@@ -1,19 +1,11 @@
-use std::{io::{Error, Read}, ops::{Range}, thread::{
-    ScopedJoinHandle
-}, collections::VecDeque, thread};
+use std::{collections::VecDeque, io::{Error, Read}, ops::Range, thread, thread::ScopedJoinHandle};
 use std::thread::sleep;
+
 use crate::{
-    utils::{
-        safe::{Safe, SafeAccessor},
-        read::{
-            RangeLazyOpen,
-            ChunkedRead,
-        },
-    },
     pack::{
         container::{
-            Container, PartialContainer,
-            ChunkSplitter,
+            ChunkSplitter, Container,
+            PartialContainer,
         },
         crypt,
     },
@@ -24,15 +16,22 @@ use crate::{
             ProgressSignalTrait,
         },
     },
+    Size,
     upload::{
         Uploader,
         UploaderMaxSize,
     },
-    Size,
+    utils::{
+        read::{
+            ChunkedRead,
+            RangeLazyOpen,
+        },
+        safe::{Safe, SafeAccessor},
+    },
 };
 use crate::pack::crypt::METADATA_SIZE;
-use crate::signal::bool::SafeBoolSignal;
 use crate::signal::{Signaler, SignalValue};
+use crate::signal::bool::SafeBoolSignal;
 use crate::utils::read::LazyOpen;
 
 pub struct ContainerUploader<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Read, S: AddSignaler<Range<u64>>> {
@@ -428,42 +427,36 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
 #[cfg(test)]
 mod test {
     use std::io::Read;
-    use std::ops::{Range};
+    use std::ops::Range;
     use std::path::PathBuf;
+
     use crate::{
-        upload::{
-            pool::{UploadPool},
-            bot::{BotUploader},
-            account::{AccountCredentials, AccountSubscription},
-            container::{ContainerUploader},
+        fs::{
+            AsPathVec,
+            dir::{ChunkedFileReader, DirEntry, scan_files},
+            IntoTree,
         },
+        pack::Waterfall,
         signal::{
-            progress::{
-                ProgressSignal,
-                ProgressSignalTrait,
-            },
+            progress::ProgressSignal,
             StoredSignal,
         },
-        fs::{
-            dir::{scan_files, DirEntry, ChunkedFileReader},
-            IntoTree,
-            AsPathVec,
+        Size,
+        upload::{
+            account::{AccountCredentials, AccountSubscription},
+            bot::BotUploader,
+            container::ContainerUploader,
+            pool::UploadPool,
         },
         utils::{
-            read::{MultiChunkedStream},
-            safe::{SafeAccessor},
-        },
-        Size,
-        pack::{
-            Waterfall,
-            SerializableWaterfall,
+            read::MultiChunkedStream,
+            safe::SafeAccessor,
         },
     };
     use crate::fs::FsNode;
     use crate::signal::progress::ProgressSignalAccessor;
     use crate::signal::StaticSignal;
     use crate::upload::webhook::WebhookUploader;
-    use crate::utils::read::StaticStream;
 
     #[test]
     pub fn test_webhook() {

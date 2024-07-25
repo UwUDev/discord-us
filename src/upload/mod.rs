@@ -1,21 +1,18 @@
+use std::{
+    io::{Error, Read},
+    ops::Range,
+};
+
+use crate::signal::{
+    AddSignaler,
+    progress::ProgressSignal,
+};
+
 pub mod account;
 pub mod pool;
 pub mod bot;
 pub mod container;
 pub mod webhook;
-
-use std::{
-    io::{Read, Error},
-    ops::Range,
-};
-use crate::{
-    signal::{
-        AddSignaler,
-        progress::{
-            ProgressSignal
-        },
-    }
-};
 
 pub trait UploaderMaxSize {
     fn get_max_size(&self) -> u64;

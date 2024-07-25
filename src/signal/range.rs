@@ -1,12 +1,12 @@
-use crate::{
-    signal::{AddSignaler, StoredSignal,DerivedSignal},
-    utils::{range::{RangedSort}, safe::{Safe}},
+use std::{
+    cell::RefCell,
+    ops::Range,
+    rc::Rc
 };
 
-use std::{
-    ops::{Range},
-    cell::RefCell,
-    rc::Rc
+use crate::{
+    signal::{AddSignaler, DerivedSignal, StoredSignal},
+    utils::{range::RangedSort, safe::Safe},
 };
 use crate::utils::safe::SafeAccessor;
 
@@ -79,8 +79,9 @@ impl<S: AddSignaler<Range<u64>>> AddSignaler<Range<u64>> for DerivedSignal<Safe<
 
 #[cfg(test)]
 mod test {
-    use std::{ops::Range, rc::Rc, cell::RefCell};
-    use crate::signal::{AddSignaler, DerivedSignal, StoredSignal, StaticSignal, GetSignal};
+    use std::{cell::RefCell, ops::Range, rc::Rc};
+
+    use crate::signal::{AddSignaler, DerivedSignal, GetSignal, StaticSignal, StoredSignal};
 
     #[test]
     pub fn test_range() {

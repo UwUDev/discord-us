@@ -1,6 +1,6 @@
-use pbkdf2::{pbkdf2_hmac};
-use sha2::{Sha256};
-use rand::{thread_rng, RngCore};
+use pbkdf2::pbkdf2_hmac;
+use rand::{RngCore, thread_rng};
+use sha2::Sha256;
 
 #[derive(Clone)]
 pub struct KeyDerivator {

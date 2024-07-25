@@ -1,16 +1,15 @@
-use std::{ops::Range};
+use std::ops::Range;
+
 use crate::{
     signal::{
-        bool::{SafeBoolSignal},
-        StoredSignal,
-        Signaler,
         AddSignaler,
-        SignalValue,
+        bool::SafeBoolSignal,
         DerivedSignal,
+        Signaler,
+        SignalValue,
+        StoredSignal,
     },
-    utils::{
-        safe::{Safe, SafeAccessor},
-    },
+    utils::safe::{Safe, SafeAccessor},
 };
 
 pub struct ProgressSignal<T> {
@@ -106,8 +105,9 @@ impl<T: Default> ProgressSignal<StoredSignal<T>> {
 
 #[cfg(test)]
 mod test {
-    use std::{ops::Range, thread::{spawn, JoinHandle}};
-    use crate::signal::{GetSignal, progress::{ProgressSignal}, StoredSignal, DynamicSignal, AddSignaler, StaticSignal};
+    use std::{ops::Range, thread::{JoinHandle, spawn}};
+
+    use crate::signal::{AddSignaler, DynamicSignal, GetSignal, progress::ProgressSignal, StaticSignal, StoredSignal};
     use crate::utils::safe::SafeAccessor;
 
     #[test]

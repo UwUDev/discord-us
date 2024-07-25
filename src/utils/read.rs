@@ -1,9 +1,10 @@
 use std::{
-    io::{Read},
-    cmp::{min},
-    ops::Range,
+    cmp::min,
+    io::Read,
     marker::PhantomData,
+    ops::Range,
 };
+
 use crate::{Size, ZeroSubstract};
 use crate::utils::range::{Intersect, Ranged, RangedSort};
 
@@ -361,10 +362,11 @@ impl Read for ReadProxy {
 
 #[cfg(test)]
 mod test {
+    use std::io::Read;
+
     use crate::utils::read::{
         Chunked, ChunkedRead,
     };
-    use std::io::Read;
 
     struct TestChunked {
         current_chunk: usize,
@@ -409,10 +411,11 @@ mod test {
 
 #[cfg(test)]
 mod test2 {
-    use std::ops::Range;
-    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkSize, LazyOpen, RangeLazyOpen};
-    use crate::Size;
     use std::io::Read;
+    use std::ops::Range;
+
+    use crate::Size;
+    use crate::utils::read::{Chunked, ChunkedOmitStream, ChunkSize, LazyOpen, RangeLazyOpen};
 
     struct TestChunked {
         cursor: u8,

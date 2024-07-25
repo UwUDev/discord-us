@@ -6,18 +6,14 @@ use std::{
         Mutex,
         MutexGuard,
     },
+    thread::sleep,
     time::{
-        Instant,
         Duration,
+        Instant,
     },
-    thread::{sleep},
 };
 
-use crate::{
-    utils::{
-        safe::{Safe, SafeAccessor},
-    }
-};
+use crate::utils::safe::{Safe, SafeAccessor};
 
 struct RateLimiterInner {
     tokens_per_units: f64,
@@ -275,12 +271,10 @@ pub trait CoolDownMs {
 
 #[cfg(test)]
 mod test {
-    use std::time::{Instant};
     use std::thread::{JoinHandle, spawn};
+    use std::time::Instant;
 
-    use crate::utils::{
-        limit::{RateLimiter, RateLimiterTrait}
-    };
+    use crate::utils::limit::{RateLimiter, RateLimiterTrait};
 
     #[test]
     pub fn test_limiter() {

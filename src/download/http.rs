@@ -1,19 +1,13 @@
 use std::{
-    ops::{Range},
     io::{
-        Result, Error,
+        Error, Result,
     },
+    ops::Range,
 };
 
 use crate::{
-    utils::{
-        read::{
-            ReadProxy,
-        }
-    },
-    download::{
-        Download
-    },
+    download::Download,
+    utils::read::ReadProxy,
 };
 
 pub struct HttpDownloader {

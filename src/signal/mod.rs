@@ -1,12 +1,8 @@
+use std::ops::Add;
+
 pub mod range;
 pub mod bool;
 pub mod progress;
-
-use std::{
-    ops::{
-        Add,
-    },
-};
 
 /// Static signal is a signal whose data can be accessed whenever you want
 /// It can be accessed by calling get_signal_data
@@ -194,7 +190,8 @@ impl<T: GetSignal<S>, S, D> GetSignal<S> for DerivedSignal<T, D> {
 #[cfg(test)]
 mod test {
     use std::{ops::Range, thread::spawn};
-    use crate::signal::{DynamicSignal, StoredSignal, Signaler, StaticSignal, AddSignaler};
+
+    use crate::signal::{AddSignaler, DynamicSignal, Signaler, StaticSignal, StoredSignal};
     use crate::utils::safe::{Safe, SafeAccessor};
 
     #[test]

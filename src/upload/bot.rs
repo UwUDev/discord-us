@@ -1,35 +1,30 @@
 use std::{
+    io::{Error, Read},
     ops::Range,
-    io::{Read, Error},
-    time::{Duration},
+    time::Duration,
 };
+
 use rand::{distributions::Alphanumeric, Rng};
 use serde_json::json;
+use ureq::{Agent, AgentBuilder};
+
 use crate::{
-    upload::{
-        Uploader,
-        UploaderMaxSize,
-        UploaderCoolDownResponse,
-        account::{
-            AccountCredentials,
-        },
-    },
     signal::{
         AddSignaler,
         progress::{ProgressSignal, ProgressSignalTrait},
     },
-    utils::{
-        read::{
-            StaticStream,
-        },
-        limit::{
-            CoolDownMs,
-        },
-    },
     Size,
+    upload::{
+        account::AccountCredentials,
+        Uploader,
+        UploaderCoolDownResponse,
+        UploaderMaxSize,
+    },
+    utils::{
+        limit::CoolDownMs,
+        read::StaticStream,
+    },
 };
-
-use ureq::{Agent, AgentBuilder};
 
 #[derive(Clone)]
 pub struct BotUploader {
@@ -174,28 +169,24 @@ impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for FormDataStream<'a, R, S> 
 
 #[cfg(test)]
 mod test {
-    use crate::{upload::{
-        account::{
-            AccountCredentials,
-            AccountSubscription,
-        },
-        bot::{
-            BotUploader,
-        },
-        Uploader,
-    }, signal::{
-        StoredSignal,
+    use std::fs::File;
+    use std::ops::Range;
+
+    use crate::{signal::{
         progress::{
             ProgressSignal,
             ProgressSignalAccessor,
         },
+        StoredSignal,
+    }, upload::{
+        account::{
+            AccountCredentials,
+            AccountSubscription,
+        },
+        bot::BotUploader,
+        Uploader,
     },
     };
-
-    use std::{
-        ops::{Range}
-    };
-    use std::fs::File;
     use crate::signal::StaticSignal;
     use crate::utils::safe::SafeAccessor;
 

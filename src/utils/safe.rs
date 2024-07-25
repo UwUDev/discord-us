@@ -1,6 +1,4 @@
-use std::{
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// A thread safe guard
 pub struct Safe<T: ?Sized> {

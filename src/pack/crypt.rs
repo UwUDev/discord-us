@@ -1,8 +1,10 @@
 use std::io::Read;
+
 use aes_gcm::{
-    AeadInPlace, Aes256Gcm, KeyInit, AeadCore,
-    aead::{OsRng, Error},
+    aead::{Error, OsRng}, AeadCore, AeadInPlace, Aes256Gcm,
+    KeyInit,
 };
+
 use crate::utils::read::Chunked;
 
 /// Encrypted Chunks are composed in this way

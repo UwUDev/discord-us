@@ -11,8 +11,10 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+
 use ureq::{Agent, AgentBuilder};
 use url::Url;
+
 use crate::utils::limit::{CoolDown, CoolDownMs};
 use crate::utils::safe::{Safe, SafeAccessor};
 

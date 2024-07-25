@@ -1,14 +1,13 @@
-use std::{ops::Range, io::Read};
-use serde::{Deserialize, Serialize};
-use hex_buffer_serde::{Hex as _, HexForm};
-use crate::{
-    pack::{
-        Size,
-        key::KeyDerivator,
-        crypt::{ChunkCipher, METADATA_SIZE, StreamCipher},
-    },
-};
+use std::{io::Read, ops::Range};
 
+use hex_buffer_serde::{Hex as _, HexForm};
+use serde::{Deserialize, Serialize};
+
+use crate::pack::{
+    crypt::{ChunkCipher, METADATA_SIZE, StreamCipher},
+    key::KeyDerivator,
+    Size,
+};
 
 /// The metadata of a container
 #[derive(Clone, Debug, Serialize, Deserialize)]

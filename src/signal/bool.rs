@@ -1,13 +1,7 @@
-use crate::{
-    signal::{SignalValue, Signaler, DynamicSignal, CallbackManager},
-};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use std::{
-    sync::{
-        atomic::AtomicBool
-    }
-};
-use std::sync::{Arc};
+use crate::signal::{CallbackManager, DynamicSignal, Signaler, SignalValue};
 use crate::utils::safe::{Safe, SafeAccessor};
 
 pub struct SafeBoolSignal {
