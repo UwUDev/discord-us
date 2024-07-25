@@ -1,8 +1,6 @@
 use std::{io::{Error, Read}, ops::{Range}, thread::{
     ScopedJoinHandle
 }, collections::VecDeque, thread};
-use std::ops::Deref;
-use std::sync::{Arc, Barrier, MutexGuard};
 use std::thread::sleep;
 use crate::{
     utils::{
@@ -85,7 +83,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
 
         thread::scope(|s| {
             let mut join_handles: Vec<ScopedJoinHandle<'_, ()>> = Vec::new();
-            let mut running = SafeBoolSignal::new(false);
+            let running = SafeBoolSignal::new(false);
 
             for _ in 0..self.thread_count {
                 let mut worker_thread = WorkerThread::new(
@@ -164,15 +162,13 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<SeqReader<R>>>, S> + Cl
                     let mut remaining_containers = self.remaining_containers.access();
                     #[cfg(test)]
                     println!("Checking if empty | end {} | containersize {} | pos {}", read_opener.end.get_value(), remaining_containers.len(), pos);
-                    if *read_opener.pos.access() >= pos as u64 {
-                        if remaining_containers.is_empty() {
-                            #[cfg(test)]
-                            println!("Adding new range {:?}", pos..(pos + chunk_splitter.max_payload_size()));
-                            remaining_containers.push_back(
-                                pos..(pos + chunk_splitter.max_payload_size())
-                            );
-                            pos += chunk_splitter.max_payload_size();
-                        }
+                    if *read_opener.pos.access() >= pos && remaining_containers.is_empty() {
+                        #[cfg(test)]
+                        println!("Adding new range {:?}", pos..(pos + chunk_splitter.max_payload_size()));
+                        remaining_containers.push_back(
+                            pos..(pos + chunk_splitter.max_payload_size())
+                        );
+                        pos += chunk_splitter.max_payload_size();
                     }
                 }
                 sleep(std::time::Duration::from_millis(50));
@@ -229,7 +225,7 @@ impl<X: Read> Read for SeqReader<X> {
             // filling with 0 untils remaining==0;
             // TODO: smarter filling, until remaining is a multiple of payload size
             // read = self.payload_size;
-            read = buf.len().min((self.remaining as i64 - self.payload_size as i64).abs() as usize % self.payload_size);
+            read = buf.len().min((self.remaining as i64 - self.payload_size as i64).unsigned_abs() as usize % self.payload_size);
 
             let mut end_at = self.end_at.access();
             if *end_at == 0 {
@@ -293,7 +289,7 @@ impl<R: Read> RangeLazyOpen<SeqReader<R>> for SeqReaderOpener<R> {
                 continue;
             }
 
-            let mut pos = self.pos.access();
+            let pos = self.pos.access();
             if *pos == range.start {
                 #[cfg(test)]
                 println!("Getting exclusive access to {:?}", range);
@@ -336,6 +332,7 @@ struct WorkerThread<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> 
 unsafe impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Read, X: RangeLazyOpen<R>, S: AddSignaler<Range<u64>>> Send for WorkerThread<U, R, X, S> {}
 
 impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Read, X: RangeLazyOpen<R>, S: AddSignaler<Range<u64>>> WorkerThread<U, R, X, S> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         uploader: U,
         reader: X,
@@ -359,6 +356,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_uploaded_containers(&mut self, c: Vec<Container>) {
         let mut containers = self.containers.access();
         let mut remaining_containers = self.remaining_containers.access();
@@ -412,7 +410,7 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<R>>, S> + Clone, R: Rea
         match self.uploader.do_upload(
             stream,
             padded_range.get_size(),
-            &mut self.progress_signal.clone().into(),
+            &mut self.progress_signal.clone(),
         ) {
             Ok(url) => {
                 self.containers.access().push(container.into_container(url.unwrap()));

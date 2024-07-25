@@ -9,7 +9,6 @@
 
 use std::collections::HashMap;
 use std::io::Error;
-use std::sync::{Arc, Mutex, RwLock};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use ureq::{Agent, AgentBuilder};
@@ -33,10 +32,10 @@ pub struct Webhook {
     cool_down: CoolDown,
 }
 
-struct WebhookResponse {
-    url: String,
-    remaining: u32,
-    reset: Duration,
+pub struct WebhookResponse {
+    pub url: String,
+    pub remaining: u32,
+    pub reset: Duration,
 }
 
 impl CoolDownMs for Webhook {
@@ -60,6 +59,12 @@ pub fn is_valid_webhook(url: &Url) -> bool {
     }
 }
 
+impl Default for WebhookResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WebhookResolver {
     pub fn new() -> Self {
         let agent = AgentBuilder::new()
@@ -77,7 +82,6 @@ impl WebhookResolver {
         // unlock hashmap
         let id = url.query_pairs().find(|(k, _)| k == "webhook_id").unwrap().1.parse::<u64>().unwrap();
         let token = url.query_pairs().find(|(k, _)| k == "token").unwrap().1;
-        let discord_url = Url::parse(&url.query_pairs().find(|(k, _)| k == "url").unwrap().1.to_string()).unwrap();
 
         let mut map = self.webhooks.access();
 

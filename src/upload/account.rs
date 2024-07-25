@@ -56,7 +56,7 @@ impl UploaderMaxSize for AccountUploader {
     }
 }
 
-const DISCORD_HEADERS: &'static [(&'static str, &'static str)] = &[
+const DISCORD_HEADERS: &[(&str, &str)] = &[
     ("Content-Type", "application/json"),
     ("X-Super-Properties", "eyJvcyI6IkFuZHJvaWQiLCJicm93c2VyIjoiRGlzY29yZCBBbmRyb2lkIiwiZGV2aWNlIjoiYmx1ZWpheSIsInN5c3RlbV9sb2NhbGUiOiJmci1GUiIsImNsaWVudF92ZXJzaW9uIjoiMTkyLjEzIC0gcm4iLCJyZWxlYXNlX2NoYW5uZWwiOiJnb29nbGVSZWxlYXNlIiwiZGV2aWNlX3ZlbmRvcl9pZCI6IjhkZGU4M2IzLTUzOGEtNDJkMi04MzExLTM1YmFlY2M2YmJiOCIsImJyb3dzZXJfdXNlcl9hZ2VudCI6IiIsImJyb3dzZXJfdmVyc2lvbiI6IiIsIm9zX3ZlcnNpb24iOiIzMyIsImNsaWVudF9idWlsZF9udW1iZXIiOjE5MjAxMzAwMTEzNzczLCJjbGllbnRfZXZlbnRfc291cmNlIjpudWxsLCJkZXNpZ25faWQiOjB9"),
     ("Accept-Language", "fr-FR"),
@@ -69,7 +69,7 @@ const DISCORD_HEADERS: &'static [(&'static str, &'static str)] = &[
     ("Accept-Encoding", "gzip"),
 ];
 
-const FILENAME: &'static str = "data.bin";
+const FILENAME: &str = "data.bin";
 
 impl AccountUploader {
     pub fn new(credentials: AccountCredentials) -> Self {
@@ -114,7 +114,7 @@ impl AccountUploader {
             .as_str()
             .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "upload_filename not found"))?;
 
-        return Ok((upload_url.to_string(), upload_filename.to_string()));
+        Ok((upload_url.to_string(), upload_filename.to_string()))
     }
 
     fn post_message(&self, upload_filename: &String) -> Result<String, Error> {
@@ -144,7 +144,7 @@ impl AccountUploader {
 
         let file_url = response["attachments"][0]["url"].as_str().unwrap();
 
-        return Ok(file_url.to_string());
+        Ok(file_url.to_string())
     }
 }
 
@@ -173,14 +173,14 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
 
                 let to_read = std::cmp::min(buf.len(), (self.size - self.read) as usize);
 
-                let read = self.reader.read(&mut buf[..to_read])?;
+                let _read = self.reader.read(&mut buf[..to_read])?;
 
                 let read = self.reader.read(buf)?;
 
                 self.signal.add_signal(self.read..(self.read + read as u64));
                 self.read += read as u64;
 
-                return Ok(read);
+                Ok(read)
             }
         }
 
@@ -206,7 +206,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
             return Err(Error::new(std::io::ErrorKind::Interrupted, "Upload interrupted"));
         }
 
-        return Ok(UploaderCoolDownResponse::Success(result));
+        Ok(UploaderCoolDownResponse::Success(result))
     }
 }
 

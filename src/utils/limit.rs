@@ -51,7 +51,7 @@ impl RateLimiter {
         Self {
             inner: Arc::new(Mutex::new(RateLimiterInner {
                 tokens_per_units,
-                last_removal: last_removal,
+                last_removal,
 
                 units,
             })),
@@ -61,7 +61,7 @@ impl RateLimiter {
     pub fn tokens_per_micro(tokens: f64) -> Self {
         let mut units = 1_000_000.0;
         if tokens < 1.0 {
-            units = units / tokens;
+            units /= tokens;
         }
         Self::new(tokens, units)
     }
@@ -79,11 +79,13 @@ impl RateLimiter {
             return 0;
         }
 
-        let sleep_time = (count - remaining) as f64 / inner.tokens_per_units;
+        let sleep_time = (count - remaining) / inner.tokens_per_units;
 
-        return sleep_time as u64;
+        sleep_time as u64
     }
 
+    // TODO: change the rate limiter to a loop instead of recursion (only once)
+    #[allow(clippy::only_used_in_recursion)]
     fn _remove_tokens(&self, inner: &mut MutexGuard<'_, RateLimiterInner>, count: f64) -> Result<(), std::io::Error> {
         //if count > (inner.tokens_per_micros * 1_000_000.0) {
         //    return Err(std::io::Error::new(std::io::ErrorKind::Other, "Cannot remove more tokens than the rate limiter allows"));
@@ -100,12 +102,13 @@ impl RateLimiter {
 
         if remaining < count {
             // Compute sleep time, use locked up to
-            let sleep_time = (count - remaining) as f64 / inner.tokens_per_units;
+            let sleep_time = (count - remaining) / inner.tokens_per_units;
 
             // sleep with lock being held
             //println!("Sleeping for {} micros", sleep_time as u64);
 
             sleep(Duration::from_micros(sleep_time as u64));
+
 
             return self._remove_tokens(inner, count);
         }
@@ -113,7 +116,7 @@ impl RateLimiter {
         if elapsed > inner.units as u64 {
             inner.last_removal = Instant::now() - Duration::from_micros(inner.units as u64 - micros);
         } else {
-            inner.last_removal = inner.last_removal + Duration::from_micros(micros);
+            inner.last_removal += Duration::from_micros(micros);
         }
 
         Ok(())
@@ -165,7 +168,7 @@ impl CoolDown {
         let duration = Duration::from_millis(cool_down_ms as u64);
         Self::Work(Safe::wrap(WorkCoolDown {
             ended: Instant::now() - duration,
-            duration: duration,
+            duration,
             max_concurrency: 1,
             concurrency: 0,
         }))
@@ -181,35 +184,26 @@ impl CoolDown {
     }
 
     pub fn start_work(&mut self) {
-        match self {
-            CoolDown::Work(work) => {
-                let mut work = work.access();
-                work.concurrency += 1;
-            }
-            _ => {}
+        if let CoolDown::Work(work) = self {
+            let mut work = work.access();
+            work.concurrency += 1;
         }
     }
 
     pub fn end_work(&mut self, at: Instant) {
-        match self {
-            CoolDown::Work(work) => {
-                let mut work = work.access();
-                work.concurrency -= 1;
-                //if work.concurrency == 0 {
-                work.ended = at;
-                //}
-            }
-            _ => {}
+        if let CoolDown::Work(work) = self {
+            let mut work = work.access();
+            work.concurrency -= 1;
+            //if work.concurrency == 0 {
+            work.ended = at;
+            //}
         }
     }
 
     pub fn set_duration(&mut self, duration: Duration) {
-        match self {
-            CoolDown::Work(work) => {
-                let mut work = work.access();
-                work.duration = duration;
-            }
-            _ => {}
+        if let CoolDown::Work(work) = self {
+            let mut work = work.access();
+            work.duration = duration;
         }
     }
 
@@ -225,7 +219,7 @@ impl CoolDown {
                     return 0;
                 }
 
-                return work.duration.as_millis() as u64 - elapsed;
+                work.duration.as_millis() as u64 - elapsed
             }
         }
     }
@@ -234,19 +228,16 @@ impl CoolDown {
         match self {
             CoolDown::Work(work) => {
                 let work = work.access();
-                return work.concurrency < work.max_concurrency;
+                work.concurrency < work.max_concurrency
             }
             _ => true,
         }
     }
 
     pub fn set_max_concurrency(&mut self, max_concurrency: u32) {
-        match self {
-            CoolDown::Work(work) => {
-                let mut work = work.access();
-                work.max_concurrency = max_concurrency;
-            }
-            _ => {}
+        if let CoolDown::Work(work) = self {
+            let mut work = work.access();
+            work.max_concurrency = max_concurrency;
         }
     }
 
@@ -255,7 +246,7 @@ impl CoolDown {
         match self {
             CoolDown::Work(work) => {
                 let work = work.access();
-                return work.concurrency;
+                work.concurrency
             }
             _ => 0,
         }
@@ -268,7 +259,7 @@ pub trait CoolDownMs {
 
     fn create_cooldown_wait() -> CoolDown {
         let (cool_down, concurrency) = Self::get_cool_down();
-        return if cool_down < 0.0 {
+        if cool_down < 0.0 {
             CoolDown::Void()
         } else {
             let duration = Duration::from_millis(cool_down as u64);
@@ -278,7 +269,7 @@ pub trait CoolDownMs {
                 max_concurrency: concurrency,
                 concurrency: 0,
             }))
-        };
+        }
     }
 }
 

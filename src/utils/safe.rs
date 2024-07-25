@@ -8,7 +8,7 @@ pub struct Safe<T: ?Sized> {
 }
 
 pub trait SafeAccessor<T> {
-    fn access<'a>(&'a self) -> MutexGuard<'a, T>;
+    fn access(&self) -> MutexGuard<'_, T>;
 }
 
 impl<T> Safe<T> {
@@ -24,7 +24,7 @@ impl<T> Safe<T> {
 }
 
 impl <T> SafeAccessor<T> for Safe<T> {
-    fn access<'a>(&'a self) -> MutexGuard<'a, T> {
+    fn access(&self) -> MutexGuard<'_, T> {
         self.guarded.lock().unwrap()
     }
 }

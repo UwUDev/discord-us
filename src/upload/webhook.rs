@@ -7,7 +7,7 @@ use serde_json::json;
 use ureq::{Agent, AgentBuilder};
 use crate::signal::AddSignaler;
 use crate::signal::progress::{ProgressSignal, ProgressSignalTrait};
-use crate::upload::account::{AccountCredentials, AccountUploader};
+use crate::upload::account::{AccountCredentials};
 use crate::upload::{Uploader, UploaderCoolDownResponse, UploaderMaxSize};
 use crate::utils::limit::CoolDownMs;
 use crate::utils::read::StaticStream;
@@ -53,7 +53,7 @@ impl UploaderMaxSize for WebhookUploader {
 
 impl CoolDownMs for WebhookUploader {
     fn get_cool_down() -> (f64, u32) {
-        return (0.0, 5);
+        (0.0, 5)
     }
 }
 

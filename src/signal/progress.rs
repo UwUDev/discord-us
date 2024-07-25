@@ -80,6 +80,12 @@ impl<T: ProgressSignalAccessor<S>, S: AddSignaler<Range<u64>>> ProgressSignalTra
 }
 
 
+impl<T: Default> Default for ProgressSignal<StoredSignal<T>> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Default> ProgressSignal<StoredSignal<T>> {
     pub fn new() -> ProgressSignal<StoredSignal<T>> {
         Self {

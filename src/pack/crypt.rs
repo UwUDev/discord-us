@@ -1,4 +1,3 @@
-use std::f32::consts::E;
 use std::io::Read;
 use aes_gcm::{
     AeadInPlace, Aes256Gcm, KeyInit, AeadCore,
@@ -76,7 +75,7 @@ impl ChunkCipher {
             tag.as_slice().into(),
         )?;
 
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -103,7 +102,7 @@ impl<R: Read> Chunked for StreamCipher<R> {
         let mut read = 0;
 
         while read < self.chunk_size - METADATA_SIZE as usize {
-            let r = self.reader.read(&mut chunk[(12 + read) as usize..(self.chunk_size - 16) as usize]).unwrap();
+            let r = self.reader.read(&mut chunk[(12 + read)..(self.chunk_size - 16)]).unwrap();
 
             if r == 0 {
                 break;

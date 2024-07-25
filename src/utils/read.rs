@@ -64,17 +64,15 @@ impl<T: Chunked> Read for ChunkedRead<T> {
                 self.buf_position += to_read;
 
                 read += to_read;
+            } else if let Some(chunk) = self.chunked.process_next_chunk() {
+                self.buf = chunk;
+                self.buf_position = 0;
             } else {
-                if let Some(chunk) = self.chunked.process_next_chunk() {
-                    self.buf = chunk;
-                    self.buf_position = 0;
-                } else {
-                    #[cfg(test)]
-                    println!("ChunkedRead::read : no more chunks");
-                    return Ok(read)
-                    // return Ok(0);
-                    // return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more chunks"));
-                }
+                #[cfg(test)]
+                println!("ChunkedRead::read : no more chunks");
+                return Ok(read)
+                // return Ok(0);
+                // return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more chunks"));
             }
         }
 
@@ -221,7 +219,7 @@ impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> RangeLazyOpen
         MultiChunkedReader {
             sorted_chunk_readers,
             cursor: range.start,
-            range: range,
+            range,
 
             current_stream: Default::default(),
 
@@ -347,10 +345,10 @@ pub struct ReadProxy {
     reader: Box<dyn Read>,
 }
 
-impl Into<ReadProxy> for Box<dyn Read + Send + Sync> {
-    fn into(self) -> ReadProxy {
+impl From<Box<dyn Read + Send + Sync>> for ReadProxy {
+    fn from(val: Box<dyn Read + Send + Sync>) -> Self {
         ReadProxy {
-            reader: self,
+            reader: val,
         }
     }
 }

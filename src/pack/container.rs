@@ -171,7 +171,7 @@ impl ChunkSplitter {
     }
 
     pub fn max_payload_size(&self) -> u64 {
-        return (self.chunk_size - self.pad_size) * (self.max_size / self.chunk_size);
+        (self.chunk_size - self.pad_size) * (self.max_size / self.chunk_size)
     }
 
     /// Adds padding to a range
@@ -190,7 +190,7 @@ impl ChunkSplitter {
             end += self.chunk_size - (end % self.chunk_size);
         }
 
-        return (start)..(end);
+        (start)..(end)
     }
 }
 

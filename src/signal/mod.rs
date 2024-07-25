@@ -186,7 +186,7 @@ impl<T, D> DerivedSignal<T, D> {
 }
 
 impl<T: GetSignal<S>, S, D> GetSignal<S> for DerivedSignal<T, D> {
-    fn get_signal<'a>(&'a mut self) -> &'a mut S {
+    fn get_signal(&mut self) -> &mut S {
         self.signal.get_signal()
     }
 }

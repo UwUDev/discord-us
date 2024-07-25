@@ -30,7 +30,7 @@ impl StoredSignal<Vec<Range<u64>>> {
     pub fn retrim_ranges(&mut self) {
         let mut ranges = self.data.clone();
 
-        if ranges.len() == 0 {
+        if ranges.is_empty() {
             return;
         }
 

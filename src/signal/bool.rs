@@ -7,11 +7,12 @@ use std::{
         atomic::AtomicBool
     }
 };
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use crate::utils::safe::{Safe, SafeAccessor};
 
 pub struct SafeBoolSignal {
     value: Arc<AtomicBool>,
-    callback_manager: Arc<RwLock<CallbackManager<bool>>>,
+    callback_manager: Safe<CallbackManager<bool>>,
 }
 
 impl Clone for SafeBoolSignal {
@@ -30,7 +31,7 @@ impl SafeBoolSignal {
     pub fn new(data: bool) -> Self {
         Self {
             value: Arc::new(AtomicBool::new(data)),
-            callback_manager: Arc::new(RwLock::new(Default::default())),
+            callback_manager: Safe::wrap(Default::default()),
         }
     }
 }
@@ -39,7 +40,7 @@ impl SafeBoolSignal {
 impl Signaler<bool> for SafeBoolSignal {
     fn signal(&mut self, t: bool) {
         self.value.store(t, std::sync::atomic::Ordering::Relaxed);
-        self.callback_manager.read().unwrap().run_callback(&t);
+        self.callback_manager.access().run_callback(&t);
     }
 }
 
@@ -51,7 +52,7 @@ impl SignalValue<bool> for SafeBoolSignal {
 
 impl<F: Fn(&bool) + Send + 'static> DynamicSignal<bool, F> for SafeBoolSignal {
     fn on_signal(&mut self, f: F) -> u32 {
-        self.callback_manager.write().unwrap().add_callback(f)
+        self.callback_manager.access().add_callback(f)
     }
 }
 

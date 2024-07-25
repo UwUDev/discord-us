@@ -6,7 +6,6 @@ use std::{
     ops::{Range},
 };
 use std::io::Error;
-use std::sync::{Arc, Mutex};
 use url::Url;
 use crate::{
     pack::{
@@ -63,7 +62,7 @@ pub struct ContainerOpener {
     key_derivator: KeyDerivator,
 
     webhook_resolver: Option<WebhookResolver>,
-    on_resolve: Safe<Option<Box<dyn Fn(&String) -> ()>>>,
+    on_resolve: OnResolve,
 }
 
 pub struct OpenedContainer<T: Read, S: AddSignaler<Range<u64>>> {
@@ -80,7 +79,7 @@ type OpenedC = OpenedContainer<ReadProxy, SignalRange>;
 
 impl ContainerOpener {
     pub fn new(container: Container, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>, password: String, resolver: Option<WebhookResolver>,
-    on_resolve: Safe<Option<Box<dyn Fn(&String) -> ()>>>) -> Self {
+    on_resolve: OnResolve) -> Self {
         let key_derivator = KeyDerivator::from_password(password);
         Self {
             container,
@@ -95,7 +94,7 @@ impl ContainerOpener {
         let u = Url::parse(&url).map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 
         match u.scheme() {
-            "https" => Ok((HttpDownloader::new(url, range))),
+            "https" => Ok(HttpDownloader::new(url, range)),
             "webhook" => {
                 let q = u.query_pairs().find(|(k, _)| k == "url").unwrap().1;
                 let url = Url::parse(&q).map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
@@ -212,11 +211,13 @@ impl<T: Read, S: AddSignaler<Range<u64>>> Chunked for OpenedContainer<T, S> {
     }
 }
 
+type OnResolve = Safe<Option<Box<dyn Fn(&String)>>>;
+
 pub struct ContainerDownloader {
     containers: Vec<Container>,
     password: String,
     webhook_resolver: Option<WebhookResolver>,
-    on_resolve: Safe<Option<Box<dyn Fn(&String) -> ()>>>,
+    on_resolve: OnResolve,
 }
 
 impl ContainerDownloader {
@@ -229,7 +230,7 @@ impl ContainerDownloader {
         self
     }
 
-    pub fn with_on_resolve(mut self, on_resolve: Box<dyn Fn(&String) -> ()>) -> Self {
+    pub fn with_on_resolve(self, on_resolve: Box<dyn Fn(&String)>) -> Self {
         self.on_resolve.access().replace(on_resolve);
         self
     }

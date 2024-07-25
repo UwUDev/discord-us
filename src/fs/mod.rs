@@ -103,19 +103,19 @@ impl<T: Clone + Serialize> From<SerializedFsNode<T>> for Ref<FsNode<T>> {
 }
 
 pub trait IntoTree<T, C> {
-    fn into_tree(&self, c: C) -> Ref<FsNode<T>>;
+    fn into_tree(self, c: C) -> Ref<FsNode<T>>;
 }
 
 impl<T> FsNode<T> {
     pub(crate) fn root() -> Ref<Self> {
-        Self::new(&String::from(""), None)
+        Self::new("", None)
     }
 
-    fn new(name: &String, parent: OptionalRef<FsNode<T>>) -> Ref<Self> {
+    fn new(name: &str, parent: OptionalRef<FsNode<T>>) -> Ref<Self> {
         let node = Self {
             data: None,
             children: HashMap::new(),
-            name: name.clone(),
+            name: name.to_string(),
 
             parent,
             self_ref: None,
@@ -144,7 +144,7 @@ impl<T> FsNode<T> {
     }
 
     pub fn get_child(&self, name: &String) -> OptionalRef<FsNode<T>> {
-        self.children.get(name).map(|node| node.clone())
+        self.children.get(name).cloned()
     }
 
     pub fn get_data(&self) -> Option<&T> {
@@ -155,24 +155,24 @@ impl<T> FsNode<T> {
         self.data = Some(data);
     }
 
-    pub fn find_recursive(&self, path: &Vec<String>) -> OptionalRef<FsNode<T>> {
+    pub fn find_recursive(&self, path: &[String]) -> OptionalRef<FsNode<T>> {
         match path.len() {
             0 => self.self_ref.clone(),
             _ => {
                 let child = self.get_child(&path[0])?;
                 let child = child.borrow();
-                child.find_recursive(&path[1..].to_vec())
+                child.find_recursive(&path[1..])
             }
         }
     }
 
-    pub fn find_recursive_create(&mut self, path: &Vec<String>) -> Ref<FsNode<T>> {
+    pub fn find_recursive_create(&mut self, path: &[String]) -> Ref<FsNode<T>> {
         match path.len() {
             0 => self.self_ref.clone().unwrap(),
             _ => {
                 let child = self.get_child_or_create(path[0].clone());
                 let mut child = child.borrow_mut();
-                child.find_recursive_create(&path[1..].to_vec())
+                child.find_recursive_create(&path[1..])
             }
         }
     }
@@ -199,7 +199,7 @@ pub trait AsPathVec {
 }
 
 pub trait AsPathRelative {
-    fn as_path_relative(&self, path: &Vec<String>) -> Vec<String>;
+    fn as_path_relative(&self, path: &[String]) -> Vec<String>;
 }
 
 impl<T> AsPathVec for FsNode<T> {
@@ -238,7 +238,7 @@ impl AsPathVec for Path {
 }
 
 impl AsPathRelative for Vec<String> {
-    fn as_path_relative(&self, path: &Vec<String>) -> Vec<String> {
+    fn as_path_relative(&self, path: &[String]) -> Vec<String> {
         let mut c = 0;
         for (i, component) in self.iter().enumerate() {
             if i >= path.len() || component != &path[i] {
@@ -252,7 +252,7 @@ impl AsPathRelative for Vec<String> {
 }
 
 impl<T: ?Sized + AsPathVec> AsPathRelative for T {
-    fn as_path_relative(&self, path: &Vec<String>) -> Vec<String> {
+    fn as_path_relative(&self, path: &[String]) -> Vec<String> {
         self.as_path_vec().as_path_relative(path)
     }
 }

@@ -36,7 +36,7 @@ clone_trait_object!(<V, R, S> ClonableUploader<V, R, S> where R: Read, S: AddSig
 impl<T: DynClone + Uploader<V, R, S>, V, R: Read, S: AddSignaler<Range<u64>>> ClonableUploader<V, R, S> for T {}
 
 pub struct PooledUploader<S: AddSignaler<Range<u64>>, R: Read> {
-    uploader: Box<dyn ClonableUploader<String, R, S>+Send>,
+    uploader: Box<dyn ClonableUploader<String, R, S> + Send>,
     cooldown: CoolDown,
     max_size: u64,
     total_uploaded: u64,
@@ -71,6 +71,12 @@ impl<S: AddSignaler<Range<u64>>, R: Read> Clone for UploadPool<S, R> {
 
 unsafe impl<S: AddSignaler<Range<u64>>, R: Read> Send for UploadPool<S, R> {}
 
+impl<S: AddSignaler<Range<u64>>, R: Read> Default for UploadPool<S, R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
     pub fn new() -> Self {
         Self {
@@ -92,7 +98,7 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
 }
 
 impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
-    fn next_uploader(&self, uploaders: &Vec<RefCell<PooledUploader<S, R>>>) -> Option<usize> {
+    fn next_uploader(&self, uploaders: &[RefCell<PooledUploader<S, R>>]) -> Option<usize> {
         // First it should find an uploader with concurrency to the lowest
         // then it should find an uploader with the lowest cooldown
         let mut mut_keys: Vec<usize> = Vec::new();
@@ -104,13 +110,13 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
             }
         }
 
-        mut_keys.sort_by_key(|(x)| {
+        mut_keys.sort_by_key(|x| {
             let uploader = &uploaders.get(*x).unwrap().borrow();
 
             (uploader.total_uploaded, uploader.cooldown.get_concurrency(), uploader.cooldown.remaining_wait())
         });
 
-        return mut_keys.first().map(|x| *x);
+        return mut_keys.first().copied();
     }
 
     fn _do_upload(
@@ -167,13 +173,10 @@ impl<S: AddSignaler<Range<u64>>, R: Read> UploadPool<S, R> {
                 .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "An error occured: cannot unlock uploader"))?
                 .borrow_mut();
 
-            match result {
-                UploaderCoolDownResponse::CoolDown(_, cooldown, concurrency) => {
-                    println!("Cooldown {}ms ({}) + concurrency = {}", cooldown, uploader_index, concurrency.max(1));
-                    uploader.cooldown.set_duration(Duration::from_millis(cooldown));
-                    uploader.cooldown.set_max_concurrency(concurrency.max(1)); // in case of concurrency == 0, this will produce a deadlock
-                }
-                _ => {}
+            if let UploaderCoolDownResponse::CoolDown(_, cooldown, concurrency) = result {
+                println!("Cooldown {}ms ({}) + concurrency = {}", cooldown, uploader_index, concurrency.max(1));
+                uploader.cooldown.set_duration(Duration::from_millis(cooldown));
+                uploader.cooldown.set_max_concurrency(concurrency.max(1)); // in case of concurrency == 0, this will produce a deadlock
             }
 
 
@@ -235,9 +238,9 @@ mod test {
         let signal = ProgressSignal::<StoredSignal<Vec<Range<u64>>>>::new();
 
         let mut join: Vec<JoinHandle<()>> = Vec::new();
-        const THREADS : usize = 10;
-        const PER_THREAD : usize = 2;
-        const SIZE : usize = 1<<16;
+        const THREADS: usize = 10;
+        const PER_THREAD: usize = 2;
+        const SIZE: usize = 1 << 16;
 
         for j in 0..THREADS {
             let mut p = pool.clone();
@@ -249,7 +252,7 @@ mod test {
                     let result = p.do_upload(
                         stream,
                         len,
-                        &mut signal.clone_with_offset((((j*PER_THREAD) + i) * SIZE) as u64)
+                        &mut signal.clone_with_offset((((j * PER_THREAD) + i) * SIZE) as u64),
                     ).unwrap();
                     println!("Uploaded thread={} | result = {:?}", j, result.unwrap());
                 }

@@ -46,7 +46,7 @@ impl UploaderMaxSize for BotUploader {
 
 impl CoolDownMs for BotUploader {
     fn get_cool_down() -> (f64, u32) {
-        return (0.0, 5);
+        (0.0, 5)
     }
 }
 
@@ -91,7 +91,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for BotUploader
             format!("\r\n--{}\r\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"data.bin\"\r\n\r\n", boundary.clone()).into()
         )).chain(FormDataStream {
             reader,
-            signal: signal,
+            signal,
             read: 0,
             size,
         }).chain(StaticStream::from(

@@ -12,7 +12,6 @@ use crate::{
         SerializedFsNode,
         FsNode,
         Ref,
-        IntoTree,
         dir::{
             DirEntryNode,
         },

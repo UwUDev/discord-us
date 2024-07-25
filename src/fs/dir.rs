@@ -133,7 +133,7 @@ impl RangeLazyOpen<ChunkedFileReader> for DirEntry {
 }
 
 impl IntoTree<DirEntryNode, &Vec<String>> for &Vec<DirEntry> {
-    fn into_tree(&self, prefix: &Vec<String>) -> Ref<FsNode<DirEntryNode>> {
+    fn into_tree(self, prefix: &Vec<String>) -> Ref<FsNode<DirEntryNode>> {
         let root = FsNode::root();
 
         for entry in self.iter() {
