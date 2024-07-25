@@ -122,7 +122,7 @@ impl<T: Read> Read for OmitStream<T> {
         //#[cfg(test)]
         //println!("OmitStream::read : to_read = {}", to_read);
 
-        if to_read <= 0 {
+        if to_read == 0 {
             return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more bytes to read"));
         }
 

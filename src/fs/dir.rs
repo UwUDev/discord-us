@@ -219,7 +219,7 @@ mod test {
         while size > 0 {
             let read = r.read(&mut buf).unwrap();
             println!("Read {} bytes|r {}", read, size);
-            f.write(&buf[..read]).unwrap();
+            let _ = f.write(&buf[..read]).unwrap();
             size -= read as u64;
         }
     }

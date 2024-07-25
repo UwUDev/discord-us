@@ -110,7 +110,7 @@ impl WebhookResolver {
         let message_id = url.domain().unwrap();
 
         let resp = w.resolve(message_id)?;
-        if resp.remaining <= 0 {
+        if resp.remaining == 0 {
             w.cool_down.set_duration(resp.reset);
             w.cool_down.set_max_concurrency(w.cool_down.get_concurrency().max(1))
         }
