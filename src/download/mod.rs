@@ -71,7 +71,7 @@ type OpenedC = OpenedContainer<ReadProxy, SignalRange>;
 
 impl ContainerOpener {
     pub fn new(container: Container, signal: ProgressSignal<StoredSignal<Vec<Range<u64>>>>, password: String, resolver: Option<WebhookResolver>,
-    on_resolve: OnResolve) -> Self {
+               on_resolve: OnResolve) -> Self {
         let key_derivator = KeyDerivator::from_password(password);
         Self {
             container,

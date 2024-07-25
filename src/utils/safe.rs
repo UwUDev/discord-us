@@ -18,10 +18,9 @@ impl<T> Safe<T> {
             guarded: Arc::new(Mutex::new(data))
         }
     }
-
 }
 
-impl <T> SafeAccessor<T> for Safe<T> {
+impl<T> SafeAccessor<T> for Safe<T> {
     fn access(&self) -> MutexGuard<'_, T> {
         self.guarded.lock().unwrap()
     }

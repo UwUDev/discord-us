@@ -71,7 +71,7 @@ impl<T: Chunked> Read for ChunkedRead<T> {
             } else {
                 #[cfg(test)]
                 println!("ChunkedRead::read : no more chunks");
-                return Ok(read)
+                return Ok(read);
                 // return Ok(0);
                 // return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "No more chunks"));
             }
@@ -176,7 +176,7 @@ pub struct MultiChunkedStream<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, 
     _phantom: PhantomData<C>,
 }
 
-impl <R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Clone for MultiChunkedStream<R, C> {
+impl<R: RangeLazyOpen<C> + Ranged + Clone + ChunkSize, C: Chunked> Clone for MultiChunkedStream<R, C> {
     fn clone(&self) -> Self {
         Self {
             chunk_readers: self.chunk_readers.clone(),

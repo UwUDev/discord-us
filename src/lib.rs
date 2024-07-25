@@ -21,7 +21,7 @@ impl<T: Size> Size for [T] {
 }
 
 
-pub trait ZeroSubstract  {
+pub trait ZeroSubstract {
     /// Substract two numbers
     /// If the substraction is negative, return 0
     ///
@@ -29,7 +29,7 @@ pub trait ZeroSubstract  {
     fn zero_substract(self, other: Self) -> Self;
 }
 
-impl<T: Sub<Output = T> + PartialOrd + Default> ZeroSubstract for T {
+impl<T: Sub<Output=T> + PartialOrd + Default> ZeroSubstract for T {
     fn zero_substract(self, other: Self) -> Self {
         if other > self {
             Self::default()

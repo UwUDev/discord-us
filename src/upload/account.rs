@@ -161,7 +161,7 @@ impl<R: Read, S: AddSignaler<Range<u64>>> Uploader<String, R, S> for AccountUplo
             size: u64,
         }
 
-        impl<'a , R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<'a, R, S> {
+        impl<'a, R: Read, S: AddSignaler<Range<u64>>> Read for ReaderWrapper<'a, R, S> {
             fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
                 if !self.signal.is_running() {
                     println!("Interrupted");
@@ -220,7 +220,7 @@ mod test {
         signal::{
             progress::{
                 ProgressSignal,
-                ProgressSignalAccessor
+                ProgressSignalAccessor,
             },
             StoredSignal,
         },

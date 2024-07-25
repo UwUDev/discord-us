@@ -186,9 +186,8 @@ impl<U: Uploader<String, ChunkedRead<crypt::StreamCipher<SeqReader<R>>>, S> + Cl
             if l > 0 {
                 let last = containers.get_mut(l - 1).unwrap();
                 last.meta.bytes_range.end = *end_at;
-                last.meta.chunk_count = ((*end_at - last.meta.bytes_range.start) / (self.chunk_size))+1;
+                last.meta.chunk_count = ((*end_at - last.meta.bytes_range.start) / (self.chunk_size)) + 1;
                 //last.meta.bytes_range.end = *end_at;
-
             }
         });
 

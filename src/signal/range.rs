@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     ops::Range,
-    rc::Rc
+    rc::Rc,
 };
 
 use crate::{
@@ -59,7 +59,7 @@ impl StoredSignal<Vec<Range<u64>>> {
     }
 }
 
-impl<T> DerivedSignal<T, u64>  {
+impl<T> DerivedSignal<T, u64> {
     fn convert_range(&self, t: &Range<u64>) -> Range<u64> {
         Range { start: t.start + self.data, end: t.end + self.data }
     }

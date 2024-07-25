@@ -55,8 +55,10 @@ pub struct SerializedFsNode<T: Serialize + Clone> {
 }
 
 impl<T: Serialize + Clone> Serialize for FsNode<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
-        S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         let serialized_node: SerializedFsNode<T> = self.clone().into();
 
         serialized_node.serialize(serializer)
