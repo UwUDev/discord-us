@@ -1,14 +1,20 @@
-# Project killed by Discord
+# EOL
 
-This project was made to abuse discord's storage system (aka Google cloud) with a highly secured system.
+This project has been completely rewritten by [@theking90000](https://github.com/theking90000) at [rust-storage-streamer](https://github.com/theking90000/rust-storage-streamer) with my old webhook trick, but he has found a better way to regenerate URL signatures, which significantly speeds up the reading of "cold" files.
 
-Thanks to [theking90000](https://github.com/theking90000) for making this project a 100 times better :)
+I would recommend you to use [WD40-S3](https://github.com/theking90000/WD40-S3) to turn this into an S3 storage system.
 
-This project was meant to be a torrent like system and was working tbh really well, after uploading thousands of gigabytes of data, discord decided to add extra "security" and this is why your discord files links has an expiration timestamp on it :c
+# ~~Project killed by Discord~~
 
-_Maybe a Terrabyte idk but now it's a dead project_
+~~This project was made to abuse discord's storage system (aka Google cloud) with a highly secured system.~~
 
-**You should take a look at "improvemets" branch**
+~~Thanks to [theking90000](https://github.com/theking90000) for making this project a 100 times better :)~~
+
+~~This project was meant to be a torrent like system and was working tbh really well, after uploading thousands of gigabytes of data, discord decided to add extra "security" and this is why your discord files links has an expiration timestamp on it :c~~
+
+~~_Maybe a Terrabyte idk but now it's a dead project_~~
+
+~~**You should take a look at "improvemets" branch**~~
 
 <br><br><br>
 
